@@ -8,7 +8,7 @@ import {
   deleteDoc, query, orderBy, limit, onSnapshot, runTransaction, serverTimestamp,
   increment, writeBatch
 } from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js';
-import { setupDrawingTools } from './drawing.js?v=6';
+import { setupDrawingTools } from './drawing.js?v=8';
 import { firebaseConfig } from './firebase-config.js';
 
 const firebaseApp = initializeApp(firebaseConfig);
@@ -119,7 +119,7 @@ byId('join-form')?.addEventListener('submit', async event => {
   const pinAgain = byId('pin-again').value;
   const invite = (byId('invite-code')?.value || '').trim();
   const joinPassword = byId('join-password').value.trim();
-  if (!joinPassword) return writeFormError('join-error', 'Enter the join password first.');
+  if (!invite && !joinPassword) return writeFormError('join-error', 'Enter your team invite code, or open Creating a new team? to use the creation password.');
   if (nickname.length < 2) return writeFormError('join-error', 'Choose a nickname with at least two characters.');
   if (!validUsername(username)) return writeFormError('join-error', 'Use 3–16 letters, numbers, or underscores in your username.');
   if (!/^\d{4}$/.test(pin)) return writeFormError('join-error', 'Your PIN needs to be exactly four numbers.');
@@ -144,7 +144,27 @@ byId('join-form')?.addEventListener('submit', async event => {
         throw signInError;
       }
     }
-    const result = await callClubFunction('registerClubMember', { username, nickname, password: joinPassword, invite });
+    const uid = credential.user.uid;
+    let result;
+    if (invite) {
+      const inviteProof = await digestText(invite);
+      await runTransaction(db, async tx => {
+        const membership = await tx.get(memberRef(uid));
+        if (membership.exists()) {
+          if (membership.data().status !== 'active') throw new Error('MEMBERSHIP_REMOVED');
+          return;
+        }
+        const ticket = await tx.get(doc(db, 'invites', inviteProof));
+        if (ticket.data()?.active !== true) throw new Error('BAD_INVITE');
+        const createdAt = serverTimestamp();
+        tx.set(memberRef(uid), { uid, role: 'member', status: 'active', chatMuted: false,
+          uploadsDisabled: false, inviteProof, createdAt });
+        tx.set(profileRef(uid), { uid, username, nickname, avatar: '🦊', createdAt });
+      });
+      result = {};
+    } else {
+      result = await callClubFunction('registerClubMember', { username, nickname, password: joinPassword, invite: '' });
+    }
     if (result.invite) {
       try { sessionStorage.setItem('igct_invite_' + credential.user.uid, result.invite); }
       catch { /* The admin can generate a new invite if local storage is blocked. */ }
@@ -153,13 +173,16 @@ byId('join-form')?.addEventListener('submit', async event => {
   } catch (error) {
     const rejected = ['functions/invalid-argument', 'functions/permission-denied',
       'functions/failed-precondition', 'functions/resource-exhausted'].includes(error.code);
-    if (created && credential && rejected) {
+    if (created && credential && (rejected || error.message === 'BAD_INVITE' || (invite && error.code === 'permission-denied'))) {
       try { await deleteUser(credential.user); } catch { /* A later retry can recover the login. */ }
     }
     if (credential && auth.currentUser?.uid === credential.user.uid) {
       try { await signOut(auth); } catch { /* The member rules still protect the club. */ }
     }
-    const message = rejected ? error.message
+    const message = error.message === 'BAD_INVITE' ? 'That invite code expired or is incorrect. Ask for a fresh code.'
+      : error.message === 'MEMBERSHIP_REMOVED' ? 'This account is no longer a team member. Ask your admin for help.'
+      : invite && error.code === 'permission-denied' ? 'This invite could not be accepted. Ask your admin for a fresh code or to check the Firebase rules.'
+      : rejected ? error.message
       : String(error.code).startsWith('functions/') ? 'Registration is unavailable. Ask your club admin to check the Firebase setup.'
       : authFriendlyError(error);
     writeFormError('join-error', message);
@@ -247,8 +270,8 @@ function renderGames() {
     <article class="game-card"><h3>🎨 Doodle of the day</h3><a class="button button-purple" href="doodle.html">Try today’s doodle →</a></article>
     <article class="game-card"><h3>🔢 Number Quest <small>+4 ⭐</small></h3><p>What is ${dailyNumber} + 6?</p><div class="answer-list">${[dailyNumber + 5, dailyNumber + 7, dailyNumber + 6].sort((a,b) => (a % 3) - (b % 3)).map(n => `<button type="button" class="answer-choice" data-number="${n}">${n}</button>`).join('')}</div></article>
     <article class="game-card"><h3>💜 Kind Choice <small>+2 ⭐</small></h3><p>A teammate drops their pencils. What could you do?</p><div class="answer-list"><button class="answer-choice" data-kind="yes">Help pick them up</button><button class="answer-choice" data-kind="no">Walk past them</button></div></article>
-    <article class="game-card"><h3>🧩 Daily Puzzle <small>+3 ⭐</small></h3>
-      <p>What comes next? ${first}, ${first + step}, ${first + step * 2}, …</p>
+    <article class="game-card puzzle-card"><div class="puzzle-top"><span aria-hidden="true">🧩</span><h3>Daily Puzzle</h3><b>+3 ⭐</b></div>
+      <p>Tap the next number.</p><div class="puzzle-sequence" aria-label="${first}, ${first + step}, ${first + step * 2}, what comes next?"><span>${first}</span><span>${first + step}</span><span>${first + step * 2}</span><strong>?</strong></div>
       <div class="answer-list">${[puzzleAnswer - 1, puzzleAnswer, puzzleAnswer + 1]
         .sort((a,b) => (a % 3) - (b % 3))
         .map(n => `<button class="answer-choice" data-puzzle="${n}">${n}</button>`).join('')}</div>
@@ -366,10 +389,10 @@ function renderChat() {
   });
 }
 
+// A round starts on Sunday. Use the following Monday as its key
+// so existing Monday-keyed drawings stay in their current round.
 function artRound(now = Date.now()) {
-  const shifted = now + 279000000;
-  const elapsed = shifted % 604800000;
-  return { week: now - elapsed, sunday: elapsed >= 518400000 };
+  return { week: now + 86400000 - (now + 365400000) % 604800000 };
 }
 
 async function saveWeeklyDrawing(strokes, week) {
@@ -385,31 +408,29 @@ async function saveWeeklyDrawing(strokes, week) {
 }
 
 async function renderArt() {
-  const { week, sunday } = artRound();
+  const { week } = artRound();
   byId('tab-content').innerHTML = `
     <div class="art-intro"><span aria-hidden="true">🎨</span><div><h3>Art Corner</h3>
-    <p>5 drawings each week · 10 votes on Sunday</p><p id="art-vote-count"></p></div></div>
-    <p id="art-winner" role="status"></p>
+    <p>5 drawings · 10 votes · Results on Sunday</p><p id="art-vote-count"></p></div></div>
+    <section id="art-podium" class="art-podium" aria-label="Art winners"></section>
     <div id="drawing-wall" class="drawing-wall"></div>
     <dialog id="drawing-preview"><button type="button" class="reaction-button">Close ✕</button><img alt=""></dialog>`;
   const wall = byId('drawing-wall');
   const status = byId('art-vote-count');
-  const winnerStatus = byId('art-winner');
+  loadArtPodium(byId('art-podium'));
   const viewer = byId('drawing-preview');
   viewer.querySelector('button').onclick = () => viewer.close();
-  if (!sunday && !uploadsDisabled) wall.insertAdjacentHTML('beforebegin', '<a class="button button-purple" href="doodle.html">✏️ Draw</a>');
+  if (!uploadsDisabled) wall.insertAdjacentHTML('beforebegin', '<a class="button button-purple" href="doodle.html">✏️ Draw</a>');
   const voteRef = doc(db, 'weeklyBallots', `${me.uid}_${week}`);
   try {
-    const [arts, ballot, result] = await Promise.all([
+    const [arts, ballot] = await Promise.all([
       getDocs(query(collection(db, 'weeklyArt'), where('week', '==', week))),
-      getDoc(voteRef),
-      getDoc(doc(db, 'artResults', String(week - 604800000)))
+      getDoc(voteRef)
     ]);
     if (!wall.isConnected) return;
     const myVotes = ballot.data()?.choices || {};
     const count = Object.keys(myVotes).length;
-    status.textContent = sunday ? `${count}/10 votes used · Change them until midnight IST` : 'Voting opens Sunday (India time).';
-    if (result.data()?.winnerName) winnerStatus.textContent = `🏆 Last week: ${result.data().winnerName} won 50 stars!`;
+    status.textContent = `${count}/10 votes used · Edit votes until the round closes Sunday at 12 a.m. IST`;
     if (arts.empty) wall.textContent = '🖍️ No doodles yet';
     let busy = false;
     async function changeVote(id, removeOnly = false) {
@@ -431,7 +452,7 @@ async function renderArt() {
         showMessage(error.message === 'VOTE_LIMIT' ? 'Undo a vote before adding another.' : authFriendlyError(error), 'error');
       } finally { busy = false; }
     }
-    if (sunday) {
+    {
       const visible = new Set(arts.docs.map(art => art.id));
       for (const id of Object.keys(myVotes).filter(id => !visible.has(id))) {
         const remove = document.createElement('button');
@@ -472,10 +493,10 @@ async function renderArt() {
       const vote = document.createElement('button');
       vote.className = 'reaction-button';
       vote.textContent = myVotes[art.id] ? '✓ Undo vote' : '⭐ Vote';
-      vote.disabled = !sunday || data.uid === me.uid || (count >= 10 && !myVotes[art.id]);
+      vote.disabled = data.uid === me.uid || (count >= 10 && !myVotes[art.id]);
       vote.onclick = () => changeVote(art.id);
       controls.append(vote);
-      if ((!sunday && data.uid === me.uid) || me.role === 'admin') {
+      if (data.uid === me.uid || me.role === 'admin') {
         const remove = document.createElement('button');
         remove.className = 'reaction-button';
         remove.textContent = 'Delete';
@@ -492,6 +513,56 @@ async function renderArt() {
       wall.append(card);
     }
   } catch (error) { wall.textContent = authFriendlyError(error); }
+}
+
+async function loadArtPodium(panel) {
+  try {
+    const rounds = await getDocs(query(collection(db, 'artResults'), orderBy('week', 'desc'), limit(12)));
+    if (!panel.isConnected || rounds.empty) return;
+    const ranked = rounds.docs.filter(round => Array.isArray(round.data().podium));
+    if (!ranked.length) return;
+    panel.innerHTML = '<h3>🏆 Sunday results</h3><label>Round <select aria-label="Results round"></select></label><div class="drawing-wall"></div>';
+    const selector = panel.querySelector('select');
+    const gallery = panel.querySelector('.drawing-wall');
+    const labels = ['🥇 Winner', '🥈 Runner-up', '🥉 Second runner-up'];
+    const formatter = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+    for (const round of ranked) {
+      selector.add(new Option(formatter.format(round.data().week + 518400000), round.id));
+    }
+    async function paint() {
+      const selected = selector.value;
+      const round = ranked.find(item => item.id === selected);
+      const podium = round.data().podium;
+      gallery.textContent = podium.length ? 'Loading winners…' : 'No votes in this round.';
+      const drawings = await Promise.all(podium.map(place => getDoc(doc(db, 'weeklyArt', place.artId))));
+      if (!gallery.isConnected || selector.value !== selected || !podium.length) return;
+      gallery.replaceChildren();
+      podium.forEach((place, index) => {
+        const card = document.createElement('article');
+        card.className = 'drawing-card podium-card';
+        const title = document.createElement('strong');
+        title.textContent = labels[index];
+        const detail = document.createElement('p');
+        detail.textContent = `${place.nickname} · ${place.stars} ⭐ · ${place.votes} votes`;
+        card.append(title, detail);
+        const strokes = drawings[index].data()?.strokes;
+        if (typeof strokes === 'string' && /^data:image\/(webp|png);base64,[a-z0-9+/=]+$/i.test(strokes)) {
+          const image = document.createElement('img');
+          image.src = strokes;
+          image.alt = labels[index] + ' drawing by ' + place.nickname;
+          card.append(image);
+        }
+        gallery.append(card);
+      });
+    }
+    function showRound() {
+      paint().catch(() => { if (gallery.isConnected) gallery.textContent = 'Could not load these drawings.'; });
+    }
+    selector.addEventListener('change', showRound);
+    showRound();
+  } catch {
+    if (panel.isConnected) panel.textContent = 'Sunday results will appear here after the weekly tally.';
+  }
 }
 
 async function togglePolls() {
@@ -799,13 +870,12 @@ function setupStudioShare(canvas) {
       const png=canvas.toDataURL('image/webp',0.5);
       if(png.length>800000) throw new Error('DRAWING_TOO_LARGE');
       const round = artRound();
-      if (round.sunday) throw new Error('VOTE_DAY');
       await saveWeeklyDrawing(png, round.week);
       button.dataset.shared = 'yes';
       button.textContent = '✅ Doodle shared!';
       byId('studio-share-status').textContent = 'Your doodle is in Art Corner!';
       showMessage('Doodle shared successfully! 🎉', 'success');
-    } catch(error) { showMessage(error.message==='ART_LIMIT'?'You have 5 drawings. Delete one in Art Corner first.':error.message==='VOTE_DAY'?'Sunday is for voting!':error.message==='DRAWING_TOO_LARGE'?'Try a simpler drawing and share again.':authFriendlyError(error),'error'); }
+    } catch(error) { showMessage(error.message==='ART_LIMIT'?'You have 5 drawings. Delete one in Art Corner first.':error.message==='DRAWING_TOO_LARGE'?'Try a simpler drawing and share again.':authFriendlyError(error),'error'); }
     finally { button.disabled = button.dataset.shared === "yes"; }
   });
 }
@@ -922,5 +992,8 @@ if (forgotPin) {
     } finally { button.disabled = checkButton.disabled = userField.disabled = codeField.disabled = false; }
   });
 }
+
+
+
 
 

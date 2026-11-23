@@ -11,7 +11,8 @@ initializeApp({ credential: cert(serviceAccount) });
 const db = getFirestore();
 const weekMillis = 604800000;
 const now = Date.now();
-const currentWeek = now - (now + 279000000) % weekMillis;
+const currentWeek = now + 86400000 - (now + 365400000) % weekMillis;
+const awards = [100, 50, 25];
 
 const [art, ballots, legacyVotes, legacySlots] = await Promise.all(
   ['weeklyArt', 'weeklyBallots', 'artVotes', 'artSlots'].map(name =>
@@ -42,23 +43,29 @@ for (const week of [...weeks].sort((a, b) => a - b)) {
   oldVotes.forEach(vote => {
     if (!newVoters.has(vote.id)) count(vote.id, [vote.data().art]);
   });
-  const top = [...counted].sort(([a, n], [b, m]) => m - n || a.localeCompare(b))[0];
-  const winner = top ? entriesById.get(top[0]) : null;
   const result = db.collection('artResults').doc(String(week));
-  await db.runTransaction(async tx => {
-    if ((await tx.get(result)).exists) return;
-    if (winner) {
-      tx.set(db.collection('scores').doc(winner.uid), {
-        uid: winner.uid, points: FieldValue.increment(50), updatedAt: FieldValue.serverTimestamp()
+  const podium = await db.runTransaction(async tx => {
+    const previous = await tx.get(result);
+    if (previous.exists) return previous.data().podium || [];
+    const ranked = [...counted].sort(([a, n], [b, m]) => m - n || a.localeCompare(b))
+      .slice(0, awards.length).map(([artId, votes], index) => ({
+        artId, nickname: entriesById.get(artId).nickname, votes, stars: awards[index]
+      }));
+    const totals = new Map();
+    for (const place of ranked) {
+      const { uid } = entriesById.get(place.artId);
+      totals.set(uid, (totals.get(uid) || 0) + place.stars);
+    }
+    for (const [uid, stars] of totals) {
+      tx.set(db.collection('scores').doc(uid), {
+        uid, points: FieldValue.increment(stars), updatedAt: FieldValue.serverTimestamp()
       }, { merge: true });
     }
-    tx.create(result, {
-      week, winnerName: winner?.nickname || '', votes: top?.[1] || 0,
-      stars: winner ? 50 : 0, closedAt: FieldValue.serverTimestamp()
-    });
+    tx.create(result, { week, podium: ranked, closedAt: FieldValue.serverTimestamp() });
+    return ranked;
   });
-
-  const documents = [...entries, ...votes, ...oldVotes, ...oldSlots];
+  const kept = new Set(podium.map(place => place.artId));
+  const documents = [...entries.filter(entry => !kept.has(entry.id)), ...votes, ...oldVotes, ...oldSlots];
   for (let offset = 0; offset < documents.length; offset += 400) {
     const batch = db.batch();
     documents.slice(offset, offset + 400).forEach(item => batch.delete(item.ref, { lastUpdateTime: item.updateTime }));

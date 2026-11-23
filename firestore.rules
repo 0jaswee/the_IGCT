@@ -42,7 +42,18 @@ service cloud.firestore {
     match /members/{uid} {
       allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow list: if isAdmin();
-      allow create: if false;
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['uid', 'role', 'status', 'chatMuted', 'uploadsDisabled', 'createdAt', 'inviteProof'])
+        && request.resource.data.uid == uid
+        && request.resource.data.role == 'member' && request.resource.data.status == 'active'
+        && request.resource.data.chatMuted == false && request.resource.data.uploadsDisabled == false
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.inviteProof is string
+        && request.resource.data.inviteProof.matches('[a-f0-9]{64}')
+        && exists(settingsPath())
+        && get(settingsPath()).data.inviteHash == request.resource.data.inviteProof
+        && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteProof)).data.active == true
+        && existsAfter(/databases/$(database)/documents/profiles/$(uid));
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'status', 'chatMuted', 'uploadsDisabled'])
         && request.resource.data.role in ['admin', 'member']
@@ -54,7 +65,11 @@ service cloud.firestore {
 
     match /profiles/{uid} {
       allow get, list: if activeMember();
-      allow create: if false;
+      allow create: if signedIn() && request.auth.uid == uid
+        && validProfile(request.resource.data)
+        && request.auth.token.email == request.resource.data.username + '@members.igct.invalid'
+        && request.resource.data.createdAt == request.time
+        && getAfter(memberPath(uid)).data.status == 'active';
       allow update: if activeMember() && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'avatar', 'avatarPhoto'])
         && validProfile(request.resource.data);
@@ -121,10 +136,9 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Monday midnight and Sunday voting, India time.
-    function elapsed() { return (request.time.toMillis() + 279000000) % 604800000; }
-    function weekStart() { return request.time.toMillis() - elapsed(); }
-    function sunday() { return elapsed() >= 518400000; }
+    // Sunday midnight starts a new round. Keys still use the following Monday.
+    function elapsed() { return (request.time.toMillis() + 365400000) % 604800000; }
+    function weekStart() { return request.time.toMillis() + 86400000 - elapsed(); }
     function artPath(id) { return /databases/$(database)/documents/weeklyArt/$(id); }
     function slotPath(uid) { return /databases/$(database)/documents/artSlots/$(uid); }
     function isCurrentArt(data) { return data.week == weekStart(); }
@@ -156,7 +170,7 @@ service cloud.firestore {
     }
     match /weeklyArt/{id} {
       allow read: if activeMember();
-      allow create: if activeMember() && !sunday() && !myMember().uploadsDisabled
+      allow create: if activeMember() && !myMember().uploadsDisabled
         && request.resource.data.keys().hasOnly(['uid', 'nickname', 'strokes', 'week', 'slot'])
         && request.resource.data.uid == request.auth.uid
         && isCurrentArt(request.resource.data)
@@ -166,18 +180,18 @@ service cloud.firestore {
         && request.resource.data.nickname == get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.nickname
         && request.resource.data.strokes is string && request.resource.data.strokes.size() <= 800000;
       allow delete: if activeMember() && isCurrentArt(resource.data)
-        && (isAdmin() || (!sunday() && resource.data.uid == request.auth.uid));
+        && (isAdmin() || resource.data.uid == request.auth.uid);
     }
     match /artVotes/{uid} {
       allow read: if activeMember();
     }
     match /weeklyBallots/{id} {
       allow get: if activeMember() && id == request.auth.uid + '_' + string(weekStart());
-      allow create: if activeMember() && sunday() && ballotChange(id, {});
-      allow update: if activeMember() && sunday() && ballotChange(id, resource.data.choices);
+      allow create: if activeMember() && ballotChange(id, {});
+      allow update: if activeMember() && ballotChange(id, resource.data.choices);
     }
     match /artResults/{week} {
-      allow get: if activeMember();
+      allow get, list: if activeMember();
     }
     match /clubJoinAttempts/{source} {
       allow read, write: if false;
@@ -206,6 +220,8 @@ service cloud.firestore {
     }
   }
 }
+
+
 
 
 

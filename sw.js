@@ -1,4 +1,4 @@
-const CACHE = 'igct-shell-v6';
+const CACHE = 'igct-shell-v8';
 const SHELL = [
   './', './index.html', './join.html', './login.html', './club.html', './doodle.html',
   './styles.css', './club-games.css', './app.js', './drawing.js', './firebase-config.js',
@@ -25,13 +25,15 @@ self.addEventListener('fetch', event => {
     const cache = await caches.open(CACHE);
     try {
       const response = await fetch(event.request, { cache: 'no-cache' });
-      if (response.ok && (!event.request.url.includes('?') || requestedVersion === '6')) await cache.put(url.href, response.clone());
+      if (response.ok && (!event.request.url.includes('?') || requestedVersion === '8')) await cache.put(url.href, response.clone());
       return response;
     } catch {
-      return ((!requestedVersion || requestedVersion === '6') && await cache.match(url.href)) || Response.error();
+      return ((!requestedVersion || requestedVersion === '8') && await cache.match(url.href)) || Response.error();
     }
   })());
 });
+
+
 
 
 

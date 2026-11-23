@@ -50,7 +50,7 @@ Photo uploads are deliberately off. Firebase now requires the pay-as-you-go Blaz
 
 ## Weekly art
 
-Publish the updated firestore.rules before using this revision. Members can share five canvas doodles Monday through Saturday. Deleting one frees a slot. On Sunday, members can vote for up to ten different drawings from teammates and undo votes until midnight, India time.
+Members can share five canvas doodles and vote for up to ten different teammate drawings in each Sunday-to-Saturday round. Deleting a drawing frees a slot. Votes can be edited until Sunday at 12:00 a.m. India time.
 
 ## Profile pictures
 
@@ -58,7 +58,7 @@ Members can upload or remove a small profile picture under Me. Publish the inclu
 
 ## Doodle Studio and stars
 
-Open doodle.html through Try today's doodle. Use Brush, Fill, Eraser, Circle, Box, Undo, or Clear. Share up to five drawings each week, Monday through Saturday. Publish the included firestore.rules to enable daily star tracking. Stars carry forward on the leaderboard. Activities award stars once per day, India time. The activities are casual and answers run in the browser.
+Open doodle.html through Try today's doodle. Use Brush, Fill, Eraser, Circle, Box, Undo, or Clear. Share up to five drawings per round. Publish the included firestore.rules to enable daily star tracking. Stars carry forward on the leaderboard. Activities award stars once per day, India time. The activities are casual and answers run in the browser.
 
 ## Install IGCT
 
@@ -68,14 +68,14 @@ Publish the included Firestore rules for server enforcement of one star award pe
 
 ## Weekly cleanup and winner award
 
-The new week starts Monday at midnight India time. The GitHub Actions workflow in .github/workflows/close-art-week.yml counts finished rounds, grants 50 stars once to the highest voted drawing, saves the winner's name, and deletes that round’s shared drawings and votes. If drawings tie, the job uses the first drawing ID in alphabetical order. A round with no votes has no winner. Downloads already saved to a device are unaffected.
+A new round starts at Sunday 12:00 a.m. India time. The scheduled workflow awards 100, 50 and 25 stars to the top three drawings with votes. The drawings remain in the Sunday results gallery. Other drawings and old ballots are deleted. Ties use drawing ID order. If fewer than three drawings received votes, fewer prizes are awarded. Each drawing earns its award even if the same artist places more than once.
 
 1. Commit the ZIP contents to the default branch, including the hidden .github folder.
 2. Publish the included firestore.rules in the IGCT Firebase console alongside the website update.
 3. Create a dedicated Google Cloud service account in the IGCT project. Grant Cloud Datastore User for Firestore. If your organization permits service account keys, add its JSON key to the repository's Actions secrets as IGCT_FIREBASE_CREDENTIALS. Never commit the key or add it to any website file.
-4. Enable Actions and run Close IGCT art week once from the Actions tab. The schedule runs Mondays around 00:07 and 02:07 India time. Scheduled starts can be delayed. The job processes only completed rounds, so it can be rerun if needed.
+4. Enable Actions and run Close IGCT art week once from the Actions tab. The schedule runs Sundays around 00:07 and 02:07 India time. Scheduled starts can be delayed. The job processes only completed rounds, so it can be rerun if needed.
 
-The previous single-vote ballots for an already-running round are counted when the voter has no replacement ballot. The older week’s art disappears from Art Corner when the week changes. Database deletion and the 50-star award happen only after the scheduled job succeeds.
+The previous single-vote ballots for an already-running round are counted when the voter has no replacement ballot. Older art leaves the current Art Corner when the week changes. Results, database cleanup, and awards appear after the scheduled job succeeds. Previously deleted art cannot be recovered. Art Corner shows the latest 12 ranked rounds.
 
 ## Admin PIN recovery
 
@@ -89,16 +89,14 @@ Firebase requires Blaze billing to deploy Cloud Functions. Use a runtime service
 
 Build 5 appears at the bottom of the home and login pages. Upload the contents of the ZIP directly to the GitHub Pages publishing folder so index.html and sw.js are at its root. Build 5 confirms the new frontend loaded. PIN resets still require the Firebase functions.
 
-## Password required to join or create the club
 
-Build 6 asks every new signup for the club join password. Existing members continue to use Come back with their username and PIN. On a fresh database, the first approved signup without an invite becomes admin. If the team already exists, new members also need its invite code. Server rules block direct client creation of clubs and members.
+## Join an existing team or create one
 
-Before publishing Build 6, set the Firebase secret interactively. Enter the join password you provided in the chat when the CLI prompts. Do not add it to GitHub or the website source.
+Build 8 lets new members enter a team invite code, or scan the QR, and join on Firebase Spark. Keep the Team creation password blank for this flow. Existing members continue to log in with their username and PIN.
+
+The separate Team creation password is only for the first admin creating a new club. Once the club exists, the backend refuses creating a second club. To enable that feature, deploy the Firebase Cloud Functions on Blaze and set the private secret interactively:
 
   firebase functions:secrets:set IGCT_JOIN_PASSWORD --project igct-game-changers-club
+  firebase deploy --project igct-game-changers-club --only functions
 
-Then deploy the functions and rules from the ZIP directory:
-
-  firebase deploy --project igct-game-changers-club --only functions,firestore:rules
-
-Deploying Cloud Functions requires Blaze. Publish these rules alongside the new website. They close the old direct signup path. The weekly winner job is configured separately above.
+The creation password is stored in Firebase Secret Manager. Publish the included firestore.rules when updating the site. Invite signup does not need Cloud Functions. To verify the new web files, look for Build 8 on the home or login screen.

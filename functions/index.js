@@ -1,7 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { defineSecret } from 'firebase-functions/params';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 
 initializeApp();
@@ -11,6 +12,71 @@ const options = { region: 'asia-south1', maxInstances: 2, timeoutSeconds: 30 };
 const hash = value => createHash('sha256').update(value).digest('hex');
 const emailFor = username => `${username}@members.igct.invalid`;
 const rejected = () => new HttpsError('failed-precondition', 'Ask your admin friend for a fresh PIN reset code.');
+const joinPassword = defineSecret('IGCT_JOIN_PASSWORD');
+
+export const registerClubMember = onCall({ ...options, secrets: [joinPassword] }, async request => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Please sign in first.');
+  const { username, nickname, password, invite } = request.data || {};
+  if (typeof username !== 'string' || !/^[a-z0-9_]{3,16}$/.test(username) ||
+      typeof nickname !== 'string' || nickname.length < 2 || nickname.length > 20 ||
+      typeof invite !== 'string' || (invite && !/^[A-Za-z0-9_-]{32}$/.test(invite)) ||
+      typeof password !== 'string' || password.length > 80 ||
+      request.auth.token.email !== emailFor(username)) {
+    throw new HttpsError('invalid-argument', 'Check your registration details.');
+  }
+  const expected = joinPassword.value().trim();
+  if (!expected) throw new HttpsError('unavailable', 'Club registration is not configured yet.');
+
+  // Track attempts even when the supplied password is invalid.
+  const source = hash(request.rawRequest.ip || 'unknown');
+  const bucket = Math.floor(Date.now() / (15 * 60 * 1000));
+  await db.runTransaction(async tx => {
+    const ref = db.doc(`clubJoinAttempts/${source}`);
+    const previous = (await tx.get(ref)).data();
+    const count = previous?.bucket === bucket ? previous.count : 0;
+    if (count >= 12) throw new HttpsError('resource-exhausted', 'Too many attempts. Try again in 15 minutes.');
+    tx.set(ref, { bucket, count: count + 1 });
+  });
+  if (!timingSafeEqual(Buffer.from(hash(password), 'hex'), Buffer.from(hash(expected), 'hex'))) {
+    throw new HttpsError('permission-denied', 'The join password did not match.');
+  }
+
+  const member = db.doc(`members/${uid}`);
+  const club = db.doc('system/club');
+  const info = db.doc('system/groupInfo');
+  const generated = randomBytes(24).toString('base64url');
+  const generatedHash = hash(generated);
+  return db.runTransaction(async tx => {
+    const [existing, group, infoDoc] = await Promise.all([tx.get(member), tx.get(club), tx.get(info)]);
+    if (existing.exists) {
+      if (existing.data().status !== 'active') throw new HttpsError('permission-denied', 'This account is unavailable.');
+      return { joined: true };
+    }
+    const createdAt = FieldValue.serverTimestamp();
+    const memberData = { uid, status: 'active', chatMuted: false, uploadsDisabled: false, createdAt };
+    const profile = db.doc(`profiles/${uid}`);
+    if (group.exists || infoDoc.exists) {
+      if (!invite) throw new HttpsError('failed-precondition', 'This team already exists. Ask the admin for an invite code.');
+      const inviteHash = hash(invite);
+      const inviteDoc = await tx.get(db.doc(`invites/${inviteHash}`));
+      if (!inviteDoc.data()?.active || group.data()?.inviteHash !== inviteHash) {
+        throw new HttpsError('failed-precondition', 'That invite code expired or is incorrect.');
+      }
+      tx.create(member, { ...memberData, role: 'member', inviteProof: inviteHash });
+      tx.create(profile, { uid, username, nickname, avatar: '🦊', createdAt });
+      return { joined: true };
+    }
+    if (invite) throw new HttpsError('failed-precondition', 'A team has not been created yet.');
+    const groupName = 'THE INVENCIABLE GAME CHANGERS TEAM (IGCT)';
+    tx.create(club, { groupName, adminUid: uid, inviteHash: generatedHash, createdAt });
+    tx.create(info, { groupName, createdAt });
+    tx.create(member, { ...memberData, role: 'admin' });
+    tx.create(profile, { uid, username, nickname, avatar: '🦊', createdAt });
+    tx.create(db.doc(`invites/${generatedHash}`), { active: true, createdBy: uid, createdAt });
+    return { joined: true, invite: generated };
+  });
+});
 
 export const allowPinReset = onCall(options, async request => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');

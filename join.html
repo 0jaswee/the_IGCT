@@ -1,16 +1,23 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#6656e8"><title>Join IGCT — Game Changers</title><link rel="stylesheet" href="styles.css?v=6"><script type="module" src="app.js?v=6"></script>  <link rel="manifest" href="manifest.webmanifest">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#6656e8"><title>Join IGCT — Game Changers</title><link rel="stylesheet" href="styles.css?v=8"><script type="module" src="app.js?v=8"></script>  <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <script src="pwa.js?v=6" defer></script>
+  <script src="pwa.js?v=8" defer></script>
 </head>
 <body class="form-page"><main class="form-layout page-wrap"><a class="back-link" href="index.html">← <span>Back to club</span></a><section class="form-card"><div class="form-mascot">🪄</div><div class="eyebrow">NEW ADVENTURE</div><h1>Join the team!</h1><p class="form-lead">Pick a nickname and PIN. You can add a picture after joining.</p><form id="join-form" novalidate>
-  <label for="join-password">Team join password <small>Ask your club admin for the password.</small></label><input id="join-password" type="password" inputmode="numeric" maxlength="80" autocomplete="off" required>
   <label for="nickname">Your nickname <small>Use a nickname, not your full name</small></label><input id="nickname" name="nickname" maxlength="20" placeholder="e.g. Star Panda" autocomplete="nickname" required>
-  <label for="invite-code">Team invite code <small>Leave blank only to create a new team. A QR invite fills this in.</small></label><input id="invite-code" name="invite-code" maxlength="80" placeholder="Paste the team code" autocomplete="off">
+  <label for="invite-code">Team invite code <small>Ask your admin for the code. A QR invite fills this in.</small></label><input id="invite-code" name="invite-code" maxlength="80" placeholder="Paste the team code" autocomplete="off">
+  <details id="team-creation">
+    <summary>Creating a new team?</summary>
+    <label for="join-password">Team creation password</label>
+    <input id="join-password" type="password" inputmode="numeric" maxlength="80" autocomplete="off">
+  </details>
   <label for="username">Choose a username</label><div class="input-prefix"><span>@</span><input id="username" name="username" minlength="3" maxlength="16" placeholder="star_panda" autocomplete="username" required></div><small class="field-help">3–16 letters, numbers, or underscores</small>
   <label for="pin">Make a 4-digit PIN</label><input id="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="••••" autocomplete="new-password" required><label for="pin-again">Type your PIN again</label><input id="pin-again" name="pin-again" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="••••" autocomplete="new-password" required>
   <div class="pin-hint">💡 Keep your PIN private. A grown-up can help you remember it.</div><label class="adult-check"><input id="adult-check" type="checkbox" required><span>A trusted grown-up is helping me join.</span></label><p class="form-error" id="join-error" role="alert"></p><button class="button button-purple full-button" type="submit">Create my account <b>→</b></button>
  </form><p class="form-switch">Already joined? <a href="login.html">Come back here</a></p></section><p class="page-footnote">Your nickname and icon are visible to your team.</p></main></body></html>
+
+
+
 
 
 

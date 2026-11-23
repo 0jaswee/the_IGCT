@@ -65,3 +65,18 @@
 #drawing-preview img{display:block;max-width:100%;max-height:74dvh;margin:10px auto}
 .studio-share-status{color:#23513b;font-weight:800;margin:8px 0}
 .studio-share-status:empty{display:none}
+
+.puzzle-card{background:linear-gradient(145deg,#fff7df,#fff 70%);border:2px solid #ffdf86}
+.puzzle-top{display:flex;align-items:center;gap:9px}
+.puzzle-top>span{font-size:1.65rem}
+.puzzle-top h3{margin:0}
+.puzzle-top b{margin-left:auto;white-space:nowrap;background:#ffe48f;border-radius:99px;padding:5px 9px;color:#614000}
+.puzzle-sequence{display:flex;gap:6px;margin:12px 0}
+.puzzle-sequence>*{display:grid;place-items:center;min-width:0;flex:1;min-height:44px;border-radius:12px;background:#e9e0ff;color:#43238c;font-size:1.1rem;font-weight:900}
+.puzzle-sequence>strong{background:#663dc1;color:#fff}
+.puzzle-card .answer-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.puzzle-card .answer-choice{min-height:44px;text-align:center;font-size:1rem}
+.art-podium:empty{display:none}
+.art-podium{padding:12px;margin:0 0 12px;border-radius:16px;background:#fff5cd}
+.art-podium h3{margin:0 0 8px}
+.podium-card{padding:8px;border:1px solid #e9ce76}
