@@ -9,8 +9,11 @@ export function setupDrawingTools(canvas) {
   const size = document.querySelector('#stroke-size');
   const tools = [...document.querySelectorAll('[data-tool]')];
   const undo = document.querySelector('#undo-doodle');
+  const redo = document.querySelector('#redo-doodle');
   const history = [];
+  const forward = [];
   let tool = 'brush';
+  let eraserSize = 10;
   let stroke;
 
   function clear() {
@@ -21,7 +24,9 @@ export function setupDrawingTools(canvas) {
     if (history.length === 8) history.shift();
     const pixels = ctx.getImageData(0, 0, width, height);
     history.push(pixels);
+    forward.length = 0;
     undo.disabled = false;
+    redo.disabled = true;
     return pixels;
   }
   function point(event) {
@@ -37,12 +42,17 @@ export function setupDrawingTools(canvas) {
     ctx.lineWidth = thickness;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    if (mode === 'circle' || mode === 'box') {
+    if (mode === 'circle' || mode === 'box' || mode === 'line') {
       ctx.putImageData(base, 0, 0);
       const dx = to.x - from.x;
       const dy = to.y - from.y;
       if (mode === 'box') ctx.strokeRect(from.x, from.y, dx, dy);
-      else if (dx && dy) {
+      else if (mode === 'line') {
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.stroke();
+      } else if (dx && dy) {
         ctx.beginPath();
         ctx.ellipse(from.x + dx / 2, from.y + dy / 2, Math.abs(dx / 2), Math.abs(dy / 2), 0, 0, Math.PI * 2);
         ctx.stroke();
@@ -84,16 +94,25 @@ export function setupDrawingTools(canvas) {
 
   clear();
   undo.disabled = true;
+  redo.disabled = true;
   tools.forEach(button => button.addEventListener('click', () => {
     tool = button.dataset.tool;
+    if (tool === 'eraser') eraserSize = Number(button.dataset.thickness);
     tools.forEach(item => item.setAttribute('aria-pressed', String(item === button)));
   }));
   canvas.addEventListener('pointerdown', event => {
     if (stroke || event.button !== 0) return;
     const from = point(event);
     if (tool === 'fill') return fill(from);
+    if (tool === 'picker') {
+      const rgb = ctx.getImageData(from.x, from.y, 1, 1).data.slice(0, 3);
+      ink.value = '#' + Array.from(rgb, value => value.toString(16).padStart(2, '0')).join('');
+      tools[0].click();
+      return;
+    }
     canvas.setPointerCapture(event.pointerId);
-    stroke = { id: event.pointerId, from, last: from, base: remember(), mode: tool, color: ink.value, thickness: Number(size.value) };
+    stroke = { id: event.pointerId, from, last: from, base: remember(), mode: tool, color: ink.value,
+      thickness: tool === 'eraser' ? eraserSize : Number(size.value) };
     draw(from);
   });
   canvas.addEventListener('pointermove', event => {
@@ -111,11 +130,26 @@ export function setupDrawingTools(canvas) {
   }
   undo.addEventListener('click', () => {
     if (!history.length || stroke) return;
+    forward.push(ctx.getImageData(0, 0, width, height));
     ctx.putImageData(history.pop(), 0, 0);
     undo.disabled = !history.length;
+    redo.disabled = false;
+  });
+  redo.addEventListener('click', () => {
+    if (!forward.length || stroke) return;
+    history.push(ctx.getImageData(0, 0, width, height));
+    ctx.putImageData(forward.pop(), 0, 0);
+    undo.disabled = false;
+    redo.disabled = !forward.length;
   });
   document.querySelector('#clear-doodle').addEventListener('click', () => {
     if (!stroke) { remember(); clear(); }
+  });
+  document.querySelector('#download-doodle').addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.href = canvas.toDataURL('image/png');
+    link.download = 'igct-doodle.png';
+    link.click();
   });
 }
 

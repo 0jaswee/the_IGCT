@@ -1,5 +1,8 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#6656e8"><title>Join IGCT — Game Changers</title><link rel="stylesheet" href="styles.css"><script type="module" src="app.js"></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#6656e8"><title>Join IGCT — Game Changers</title><link rel="stylesheet" href="styles.css"><script type="module" src="app.js"></script>  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <script src="pwa.js" defer></script>
+</head>
 <body class="form-page"><main class="form-layout page-wrap"><a class="back-link" href="index.html">← <span>Back to club</span></a><section class="form-card"><div class="form-mascot">🪄</div><div class="eyebrow">NEW ADVENTURE</div><h1>Join the team!</h1><p class="form-lead">Pick a nickname and PIN. You can add a picture after joining.</p><form id="join-form" novalidate>
   <label for="nickname">Your nickname <small>Use a nickname, not your full name</small></label><input id="nickname" name="nickname" maxlength="20" placeholder="e.g. Star Panda" autocomplete="nickname" required>
   <label for="invite-code">Team invite code <small>Leave blank only to create a new team. A QR invite fills this in.</small></label><input id="invite-code" name="invite-code" maxlength="80" placeholder="Paste the team code" autocomplete="off">
@@ -7,5 +10,6 @@
   <label for="pin">Make a 4-digit PIN</label><input id="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="••••" autocomplete="new-password" required><label for="pin-again">Type your PIN again</label><input id="pin-again" name="pin-again" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="••••" autocomplete="new-password" required>
   <div class="pin-hint">💡 Keep your PIN private. A grown-up can help you remember it.</div><label class="adult-check"><input id="adult-check" type="checkbox" required><span>A trusted grown-up is helping me join.</span></label><p class="form-error" id="join-error" role="alert"></p><button class="button button-purple full-button" type="submit">Create my account <b>→</b></button>
  </form><p class="form-switch">Already joined? <a href="login.html">Come back here</a></p></section><p class="page-footnote">Your nickname and icon are visible to your team.</p></main></body></html>
+
 
 

@@ -59,3 +59,7 @@ Members can upload or remove a small profile picture under Me. Publish the inclu
 ## Doodle Studio and stars
 
 Open doodle.html through Try today's doodle. Use Brush, Fill, Eraser, Circle, Box, Undo, or Clear. Share one drawing each week Monday through Saturday. Publish the included firestore.rules to enable daily star tracking. Stars carry forward on the leaderboard. Activities award stars once per day, India time. The activities are casual and answers run in the browser.
+
+## Install IGCT
+
+Tap Install IGCT on the home page after deploying to GitHub Pages. The app opens on its own home screen. Sign-in, sharing and team data require internet access.
