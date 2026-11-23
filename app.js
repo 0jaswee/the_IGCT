@@ -231,6 +231,12 @@ async function savePoints(activity, points) {
   await loadScores();
 }
 
+function starSaveError(error) {
+  return error.code === 'permission-denied'
+    ? 'Your stars could not be saved. Ask the club admin for help.'
+    : authFriendlyError(error);
+}
+
 function renderGames() {
   const dailyNumber = Number(todayInIndia().slice(-2));
   const question = trivia[dailyNumber % trivia.length];
@@ -251,14 +257,14 @@ function renderGames() {
     triviaDone = true;
     qsa('[data-answer]', card).forEach(item => item.disabled = true);
     feedback.textContent = correct ? 'That’s right! High five! 🙌' : `Good try! The answer is ${question.a}.`;
-    if (correct) { try { await savePoints("trivia", 5); } catch (error) { showMessage(authFriendlyError(error), 'error'); } }
+    if (correct) { try { await savePoints("trivia", 5); } catch (error) { showMessage(starSaveError(error), 'error'); } }
   }));
   function reward(button, activity, points, correct) {
     button.addEventListener('click', async () => {
       if (!correct) return showMessage('Try another answer!');
       button.disabled = true;
       try { await savePoints(activity, points); }
-      catch (error) { button.disabled = false; showMessage(authFriendlyError(error), 'error'); }
+      catch (error) { button.disabled = false; showMessage(starSaveError(error), 'error'); }
     });
   }
   reward(byId('mission-done'), 'kindness', 3, true);
@@ -650,5 +656,6 @@ function setupStudioShare(canvas) {
     finally { button.disabled = button.dataset.shared === "yes"; }
   });
 }
+
 
 

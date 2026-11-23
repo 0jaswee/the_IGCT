@@ -1,4 +1,8 @@
 export function setupDrawingTools(canvas) {
+  const display = canvas.getBoundingClientRect();
+  const scale = Math.min(1.5, 1100 / Math.max(display.width, display.height));
+  canvas.width = Math.max(1, Math.round(display.width * scale));
+  canvas.height = Math.max(1, Math.round(display.height * scale));
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const { width, height } = canvas;
   const ink = document.querySelector('#ink');
@@ -114,3 +118,4 @@ export function setupDrawingTools(canvas) {
     if (!stroke) { remember(); clear(); }
   });
 }
+

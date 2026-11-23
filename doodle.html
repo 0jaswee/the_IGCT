@@ -16,8 +16,11 @@
       <button class="button button-purple" id="save-doodle" disabled>Share doodle</button>
     </header>
     <p id="studio-prompt">Opening your drawing space…</p>
-    <fieldset id="studio-tools" class="studio-row" disabled>
-      <legend>Drawing tools</legend>
+    <canvas id="studio-canvas" width="800" height="560" aria-label="Drawing canvas"></canvas>
+    <div class="studio-dock">
+    <p class="studio-dock-hint" id="studio-tools-hint">Drawing tools · Swipe for more →</p>
+    <fieldset id="studio-tools" class="studio-row" aria-label="Drawing tools" aria-describedby="studio-tools-hint" tabindex="0" disabled>
+
       <button type="button" data-tool="brush" aria-pressed="true">🖌️ Brush</button>
       <button type="button" data-tool="fill" aria-pressed="false">🪣 Fill</button>
       <button type="button" data-tool="eraser" aria-pressed="false">🧽 Eraser</button>
@@ -28,8 +31,10 @@
       <button type="button" id="undo-doodle">↶ Undo</button>
       <button type="button" id="clear-doodle">Clear</button>
     </fieldset>
-    <canvas id="studio-canvas" width="800" height="560" aria-label="Drawing canvas"></canvas>
+    </div>
+
     <p id="club-message" role="status" aria-live="polite"></p>
   </main>
 </body>
 </html>
+
