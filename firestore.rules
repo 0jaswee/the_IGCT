@@ -109,19 +109,38 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    function twoDigits(value) {
+      return (value < 10 ? '0' : '') + string(value);
+    }
+    function starDay() {
+      let india = request.time + duration.value(19800, 's');
+      return string(india.year()) + '-' + twoDigits(india.month()) + '-' + twoDigits(india.day());
+    }
+    function rewardTotal(claims) {
+      return (claims.get('trivia', false) == true ? 5 : 0)
+        + (claims.get('kindness', false) == true ? 3 : 0)
+        + (claims.get('math', false) == true ? 4 : 0)
+        + (claims.get('choice', false) == true ? 2 : 0);
+    }
+    function validReward(uid, prior) {
+      let next = request.resource.data;
+      let claims = next.daily;
+      let old = prior.get('day', '') == starDay() ? prior.get('daily', {}) : {};
+      let delta = claims.diff(old);
+      return next.keys().hasOnly(['uid', 'points', 'updatedAt', 'day', 'daily'])
+        && next.uid == uid && next.day == starDay() && next.updatedAt == request.time
+        && next.points is int && claims is map
+        && claims.keys().hasOnly(['trivia', 'kindness', 'math', 'choice'])
+        && claims.get('trivia', true) == true && claims.get('kindness', true) == true
+        && claims.get('math', true) == true && claims.get('choice', true) == true
+        && delta.addedKeys().size() == 1
+        && delta.changedKeys().size() == 0 && delta.removedKeys().size() == 0
+        && next.points == prior.get('points', 0) + rewardTotal(claims) - rewardTotal(old);
+    }
     match /scores/{uid} {
       allow read: if activeMember();
-      allow create: if activeMember() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['uid', 'points', 'updatedAt', 'day', 'daily'])
-        && request.resource.data.uid == uid
-        && request.resource.data.points is int
-        && request.resource.data.points >= 0
-        && request.resource.data.points <= 10000;
-      allow update: if activeMember() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'updatedAt', 'day', 'daily'])
-        && request.resource.data.points is int
-        && request.resource.data.points >= resource.data.points
-        && request.resource.data.points <= resource.data.points + 20;
+      allow create: if activeMember() && request.auth.uid == uid && validReward(uid, {});
+      allow update: if activeMember() && request.auth.uid == uid && validReward(uid, resource.data);
       allow delete: if isAdmin();
     }
 
@@ -173,6 +192,8 @@ service cloud.firestore {
     }
   }
 }
+
+
 
 
 

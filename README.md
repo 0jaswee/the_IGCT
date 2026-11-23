@@ -63,3 +63,5 @@ Open doodle.html through Try today's doodle. Use Brush, Fill, Eraser, Circle, Bo
 ## Install IGCT
 
 Tap Install IGCT on the home page after deploying to GitHub Pages. The app opens on its own home screen. Sign-in, sharing and team data require internet access.
+
+Publish the included Firestore rules for server enforcement of one star award per activity per India calendar day.

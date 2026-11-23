@@ -6,3 +6,8 @@
 .home-install{margin-top:12px}
 .home-install button[hidden]{display:none}
 .home-install p{font-size:.9rem;line-height:1.4;margin:8px 0 0}
+
+.home-entry{max-width:660px;margin:18px auto 22px}
+.welcome-page .home-entry .hero-actions{margin:0}
+.welcome-page .home-entry .button{min-height:62px;border:2px solid #6656e8;font-weight:900}
+.login-layout .login-card{margin-top:18px}

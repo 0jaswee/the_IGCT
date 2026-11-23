@@ -13,7 +13,6 @@ export function setupDrawingTools(canvas) {
   const history = [];
   const forward = [];
   let tool = 'brush';
-  let eraserSize = 10;
   let stroke;
 
   function clear() {
@@ -97,7 +96,6 @@ export function setupDrawingTools(canvas) {
   redo.disabled = true;
   tools.forEach(button => button.addEventListener('click', () => {
     tool = button.dataset.tool;
-    if (tool === 'eraser') eraserSize = Number(button.dataset.thickness);
     tools.forEach(item => item.setAttribute('aria-pressed', String(item === button)));
   }));
   canvas.addEventListener('pointerdown', event => {
@@ -111,8 +109,11 @@ export function setupDrawingTools(canvas) {
       return;
     }
     canvas.setPointerCapture(event.pointerId);
-    stroke = { id: event.pointerId, from, last: from, base: remember(), mode: tool, color: ink.value,
-      thickness: tool === 'eraser' ? eraserSize : Number(size.value) };
+    const erasing = tool === 'eraser-small' || tool === 'eraser-big';
+    const eraserPixels = tool === 'eraser-big' ? 48 : 8;
+    const canvasScale = width / canvas.getBoundingClientRect().width;
+    stroke = { id: event.pointerId, from, last: from, base: remember(), mode: erasing ? 'eraser' : tool, color: ink.value,
+      thickness: erasing ? eraserPixels * canvasScale : Number(size.value) };
     draw(from);
   });
   canvas.addEventListener('pointermove', event => {
@@ -152,4 +153,5 @@ export function setupDrawingTools(canvas) {
     link.click();
   });
 }
+
 

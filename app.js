@@ -20,10 +20,10 @@ const words = ['🦊','🐼','🐯','🐸','🐙','🐲'];
 let me = null;
 let membersCache = [];
 let chatStop = null;
+let stopDailyScore = null;
 let activeTab = "home";
 let chatMuted = false;
 let uploadsDisabled = false;
-let triviaDone = false;
 let gameTabLoaded = false;
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -213,9 +213,8 @@ function todayInIndia() {
   return new Date(Date.now() + 19800000).toISOString().slice(0, 10);
 }
 
-async function savePoints(activity, points) {
+async function savePoints(activity, points, today) {
   const score = doc(db, 'scores', me.uid);
-  const today = todayInIndia();
   const earned = await runTransaction(db, async tx => {
     const current = await tx.get(score);
     const data = current.data();
@@ -238,38 +237,69 @@ function starSaveError(error) {
 }
 
 function renderGames() {
-  const dailyNumber = Number(todayInIndia().slice(-2));
+  const today = todayInIndia();
+  const dailyNumber = Number(today.slice(-2));
   const question = trivia[dailyNumber % trivia.length];
   const mission = missions[dailyNumber % missions.length];
   const card = byId('tab-content');
   card.innerHTML = `<div class="games-grid">
-    <article class="game-card trivia-game"><div class="game-top"><span>🧠</span><small>TEAM TRIVIA</small><b>+5 ⭐</b></div><h3>Quick Brain Boost</h3><p class="game-question">${question.q}</p><div class="answer-list">${question.options.map(option => `<button class="answer-choice" data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join('')}</div><p class="game-feedback" id="trivia-feedback" aria-live="polite"></p></article>
+    <article class="game-card trivia-game"><div class="game-top"><span>🧠</span><small>TEAM TRIVIA</small><b>+5 ⭐</b></div><h3>Quick Brain Boost</h3><p class="game-question">${question.q}</p><div class="answer-list">${question.options.map(option => `<button class="answer-choice" data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join('')}</div></article>
     <article class="game-card mission-game"><div class="game-top"><span>💜</span><small>KINDNESS QUEST</small><b>+3 ⭐</b></div><h3>Today's kind mission</h3><p class="game-question">${mission}</p><button class="button button-purple full-button" id="mission-done">I did it! 🎉</button><p class="tiny-note">Do this in real life, then come back to collect your stars.</p></article>
     <article class="game-card"><h3>🎨 Doodle of the day</h3><a class="button button-purple" href="doodle.html">Try today’s doodle →</a></article>
     <article class="game-card"><h3>🔢 Number Quest <small>+4 ⭐</small></h3><p>What is ${dailyNumber} + 6?</p><div class="answer-list">${[dailyNumber + 5, dailyNumber + 7, dailyNumber + 6].sort((a,b) => (a % 3) - (b % 3)).map(n => `<button type="button" class="answer-choice" data-number="${n}">${n}</button>`).join('')}</div></article>
     <article class="game-card"><h3>💜 Kind Choice <small>+2 ⭐</small></h3><p>A teammate drops their pencils. What could you do?</p><div class="answer-list"><button class="answer-choice" data-kind="yes">Help pick them up</button><button class="answer-choice" data-kind="no">Walk past them</button></div></article>
     <article class="game-card stars-game"><div class="game-top"><span>🏆</span><small>TEAM STARS</small><b>Leaderboard</b></div><h3>Cheer each other on</h3><div id="score-list" class="score-list"><p class="tiny-note">Loading team stars…</p></div></article>
   </div>`;
-  qsa('[data-answer]', card).forEach(button => button.addEventListener('click', async () => {
-    if (triviaDone) return;
-    const correct = button.dataset.answer === question.a;
-    const feedback = byId('trivia-feedback');
-    triviaDone = true;
-    qsa('[data-answer]', card).forEach(item => item.disabled = true);
-    feedback.textContent = correct ? 'That’s right! High five! 🙌' : `Good try! The answer is ${question.a}.`;
-    if (correct) { try { await savePoints("trivia", 5); } catch (error) { showMessage(starSaveError(error), 'error'); } }
-  }));
-  function reward(button, activity, points, correct) {
-    button.addEventListener('click', async () => {
-      if (!correct) return showMessage('Try another answer!');
-      button.disabled = true;
-      try { await savePoints(activity, points); }
-      catch (error) { button.disabled = false; showMessage(starSaveError(error), 'error'); }
-    });
+  const gameView = card.firstElementChild;
+  const tasks = [
+    { id: 'trivia', points: 5, buttons: qsa('[data-answer]', card), correct: button => button.dataset.answer === question.a },
+    { id: 'kindness', points: 3, buttons: [byId('mission-done')], correct: () => true },
+    { id: 'math', points: 4, buttons: qsa('[data-number]', card), correct: button => Number(button.dataset.number) === dailyNumber + 6 },
+    { id: 'choice', points: 2, buttons: qsa('[data-kind]', card), correct: button => button.dataset.kind === 'yes' }
+  ];
+
+  function paint(task, text) {
+    task.buttons.forEach(button => { button.disabled = task.done || task.saving || !task.ready; });
+    task.status.textContent = task.done ? '✅ Done for today' : text;
   }
-  reward(byId('mission-done'), 'kindness', 3, true);
-  qsa('[data-number]', card).forEach(button => reward(button, 'math', 4, Number(button.dataset.number) === dailyNumber + 6));
-  qsa('[data-kind]', card).forEach(button => reward(button, 'choice', 2, button.dataset.kind === 'yes'));
+
+  for (const task of tasks) {
+    task.status = document.createElement('p');
+    task.status.className = 'game-feedback';
+    task.status.setAttribute('role', 'status');
+    task.buttons[0].closest('.game-card').append(task.status);
+    paint(task, 'Checking today’s progress…');
+    for (const button of task.buttons) {
+      button.addEventListener('click', async () => {
+        if (todayInIndia() !== today) return selectTab('games');
+        if (task.done || task.saving || !task.ready) return;
+        if (!task.correct(button)) return paint(task, 'Try another answer!');
+        task.saving = true;
+        paint(task, 'Saving stars…');
+        let message = '';
+        try {
+          await savePoints(task.id, task.points, today);
+          task.done = true;
+        } catch (error) {
+          message = starSaveError(error);
+        } finally {
+          task.saving = false;
+          paint(task, message);
+        }
+      });
+    }
+  }
+  stopDailyScore = onSnapshot(doc(db, 'scores', me.uid), { includeMetadataChanges: true }, snapshot => {
+    if (!gameView.isConnected || snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+    const score = snapshot.data();
+    for (const task of tasks) {
+      task.ready = true;
+      task.done ||= score?.day === today && score.daily?.[task.id] === true;
+      paint(task, task.saving ? 'Saving stars…' : '');
+    }
+  }, error => {
+    for (const task of tasks) paint(task, starSaveError(error));
+  });
   loadScores();
 }
 
@@ -568,11 +598,12 @@ function renderMe() {
 
 function selectTab(name) {
   activeTab = name;
+  if (stopDailyScore) { stopDailyScore(); stopDailyScore = null; }
   if(chatStop){chatStop();chatStop=null;}
   qsa('.nav-item').forEach(item=>item.classList.toggle('active',item.dataset.tab===name));
   byId('section-title').textContent=({home:'Team home',games:'Group games',chat:'Team chat',art:'Art corner',team:'Team buddies',me:'My profile'})[name]||'Team home';
   if(name==='home')renderHome();
-  if(name==='games'){triviaDone=false;renderGames();}
+  if(name==='games')renderGames();
   if(name==='chat')renderChat();
   if(name==='art')renderArt();
   if(name==='team')renderTeam();
@@ -656,6 +687,8 @@ function setupStudioShare(canvas) {
     finally { button.disabled = button.dataset.shared === "yes"; }
   });
 }
+
+
 
 
 
