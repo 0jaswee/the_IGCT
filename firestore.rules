@@ -112,13 +112,13 @@ service cloud.firestore {
     match /scores/{uid} {
       allow read: if activeMember();
       allow create: if activeMember() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['uid', 'points', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'points', 'updatedAt', 'day', 'daily'])
         && request.resource.data.uid == uid
         && request.resource.data.points is int
         && request.resource.data.points >= 0
         && request.resource.data.points <= 10000;
       allow update: if activeMember() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'updatedAt'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'updatedAt', 'day', 'daily'])
         && request.resource.data.points is int
         && request.resource.data.points >= resource.data.points
         && request.resource.data.points <= resource.data.points + 20;
@@ -173,5 +173,6 @@ service cloud.firestore {
     }
   }
 }
+
 
 

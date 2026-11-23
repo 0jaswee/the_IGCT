@@ -55,3 +55,7 @@ Publish the updated firestore.rules before using this revision. Members share on
 ## Profile pictures
 
 Members can upload or remove a small profile picture under Me. Publish the included Firestore rules to enable these updates. Gallery images are not accepted as art posts. The Art & Vote tab opens voting on Sundays, India time.
+
+## Doodle Studio and stars
+
+Open doodle.html through Try today's doodle. Use Brush, Fill, Eraser, Circle, Box, Undo, or Clear. Share one drawing each week Monday through Saturday. Publish the included firestore.rules to enable daily star tracking. Stars carry forward on the leaderboard. Activities award stars once per day, India time. The activities are casual and answers run in the browser.
