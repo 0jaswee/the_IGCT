@@ -101,8 +101,9 @@ service cloud.firestore {
     match /chat/{messageId} {
       allow read: if activeMember();
       allow create: if activeMember() && myMember().chatMuted == false
-        && request.resource.data.keys().hasOnly(['uid', 'nickname', 'avatar', 'text', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'nickname', 'avatar', 'text', 'createdAt', 'admin'])
         && request.resource.data.uid == request.auth.uid
+        && (!('admin' in request.resource.data) || request.resource.data.admin == isAdmin())
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
         && request.resource.data.text.size() <= 350;
@@ -120,7 +121,8 @@ service cloud.firestore {
       return (claims.get('trivia', false) == true ? 5 : 0)
         + (claims.get('kindness', false) == true ? 3 : 0)
         + (claims.get('math', false) == true ? 4 : 0)
-        + (claims.get('choice', false) == true ? 2 : 0);
+        + (claims.get('choice', false) == true ? 2 : 0)
+        + (claims.get('puzzle', false) == true ? 3 : 0);
     }
     function validReward(uid, prior) {
       let next = request.resource.data;
@@ -130,9 +132,10 @@ service cloud.firestore {
       return next.keys().hasOnly(['uid', 'points', 'updatedAt', 'day', 'daily'])
         && next.uid == uid && next.day == starDay() && next.updatedAt == request.time
         && next.points is int && claims is map
-        && claims.keys().hasOnly(['trivia', 'kindness', 'math', 'choice'])
+        && claims.keys().hasOnly(['trivia', 'kindness', 'math', 'choice', 'puzzle'])
         && claims.get('trivia', true) == true && claims.get('kindness', true) == true
         && claims.get('math', true) == true && claims.get('choice', true) == true
+        && claims.get('puzzle', true) == true
         && delta.addedKeys().size() == 1
         && delta.changedKeys().size() == 0 && delta.removedKeys().size() == 0
         && next.points == prior.get('points', 0) + rewardTotal(claims) - rewardTotal(old);
@@ -150,50 +153,81 @@ service cloud.firestore {
     function sunday() { return elapsed() >= 518400000; }
     function artPath(id) { return /databases/$(database)/documents/weeklyArt/$(id); }
     function slotPath(uid) { return /databases/$(database)/documents/artSlots/$(uid); }
-    function newWeek() { return resource == null || resource.data.week < weekStart(); }
-    function roundEntry() {
-      return request.resource.data.keys().hasOnly(['week', 'art'])
-        && request.resource.data.week == weekStart()
-        && request.resource.data.art is string
-        && request.resource.data.art.matches('[A-Za-z0-9]{20}');
+    function isCurrentArt(data) { return data.week == weekStart(); }
+    function legacyArtExists(uid) {
+      let path = slotPath(uid);
+      return exists(path) && get(path).data.week == weekStart()
+        && exists(artPath(get(path).data.art));
     }
-
+    function ballotChange(id, before) {
+      let data = request.resource.data;
+      let diff = data.choices.diff(before);
+      return data.keys().hasOnly(['uid', 'week', 'choices', 'target']) && data.uid == request.auth.uid
+        && data.week == weekStart() && id == request.auth.uid + '_' + string(data.week)
+        && data.choices is map && data.choices.size() <= 10 && data.target is string
+        && data.target.matches('[A-Za-z0-9_-]{1,140}')
+        && diff.affectedKeys().size() == 1 && diff.affectedKeys().hasOnly([data.target])
+        && (diff.removedKeys().size() == 1 || (
+          diff.addedKeys().size() == 1 && data.choices[data.target] == true
+          && get(artPath(data.target)).data.week == weekStart()
+          && get(artPath(data.target)).data.uid != request.auth.uid
+        ));
+    }
     match /drawings/{id} {
       allow read: if activeMember();
       allow delete: if isAdmin();
     }
     match /artSlots/{uid} {
       allow get: if activeMember() && request.auth.uid == uid;
-      allow create, update: if activeMember() && request.auth.uid == uid
-        && !sunday() && !myMember().uploadsDisabled && roundEntry() && newWeek()
-        && !exists(artPath(request.resource.data.art))
-        && getAfter(artPath(request.resource.data.art)).data.uid == uid;
     }
     match /weeklyArt/{id} {
       allow read: if activeMember();
       allow create: if activeMember() && !sunday() && !myMember().uploadsDisabled
-        && request.resource.data.keys().hasOnly(['uid', 'nickname', 'strokes', 'week'])
+        && request.resource.data.keys().hasOnly(['uid', 'nickname', 'strokes', 'week', 'slot'])
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.week == weekStart()
+        && isCurrentArt(request.resource.data)
+        && request.resource.data.slot is int && request.resource.data.slot >= 0 && request.resource.data.slot < 5
+        && id == request.auth.uid + '_' + string(weekStart()) + '_' + string(request.resource.data.slot)
+        && (request.resource.data.slot != 0 || !legacyArtExists(request.auth.uid))
         && request.resource.data.nickname == get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.nickname
-        && request.resource.data.strokes is string
-        && request.resource.data.strokes.size() <= 800000
-        && getAfter(slotPath(request.auth.uid)).data.art == id
-        && getAfter(slotPath(request.auth.uid)).data.week == weekStart()
-        && (!exists(slotPath(request.auth.uid)) || get(slotPath(request.auth.uid)).data.week < weekStart());
-      allow delete: if isAdmin();
+        && request.resource.data.strokes is string && request.resource.data.strokes.size() <= 800000;
+      allow delete: if activeMember() && isCurrentArt(resource.data)
+        && (isAdmin() || (!sunday() && resource.data.uid == request.auth.uid));
     }
     match /artVotes/{uid} {
       allow read: if activeMember();
-      allow create, update: if activeMember() && request.auth.uid == uid
-        && sunday() && roundEntry() && newWeek()
-        && get(artPath(request.resource.data.art)).data.week == weekStart()
-        && get(artPath(request.resource.data.art)).data.uid != uid;
+    }
+    match /weeklyBallots/{id} {
+      allow get: if activeMember() && id == request.auth.uid + '_' + string(weekStart());
+      allow create: if activeMember() && sunday() && ballotChange(id, {});
+      allow update: if activeMember() && sunday() && ballotChange(id, resource.data.choices);
+    }
+    match /artResults/{week} {
+      allow get: if activeMember();
+    }
+    match /pinResets/{username} {
+      allow read, write: if false;
+    }
+    match /teamPolls/{id} {
+      allow read: if activeMember();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['question', 'first', 'second', 'createdAt'])
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.question is string && request.resource.data.question.size() > 0
+        && request.resource.data.question.size() <= 100
+        && request.resource.data.first is string && request.resource.data.first.size() > 0
+        && request.resource.data.first.size() <= 40
+        && request.resource.data.second is string && request.resource.data.second.size() > 0
+        && request.resource.data.second.size() <= 40 && request.resource.data.first != request.resource.data.second;
+      match /answers/{uid} {
+        allow read: if activeMember();
+        allow create, update: if activeMember() && request.auth.uid == uid
+          && exists(/databases/$(database)/documents/teamPolls/$(id))
+          && request.resource.data.keys().hasOnly(['option'])
+          && request.resource.data.option is int && request.resource.data.option in [0, 1];
+      }
     }
   }
 }
-
-
-
 
 

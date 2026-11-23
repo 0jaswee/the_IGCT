@@ -1,4 +1,4 @@
-const CACHE = 'igct-shell-v2';
+const CACHE = 'igct-shell-v4';
 const SHELL = [
   './', './index.html', './join.html', './login.html', './club.html', './doodle.html',
   './styles.css', './club-games.css', './app.js', './drawing.js', './firebase-config.js',
@@ -31,4 +31,6 @@ self.addEventListener('fetch', event => {
     }
   })());
 });
+
+
 

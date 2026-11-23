@@ -45,3 +45,23 @@
 #studio-tools{box-sizing:border-box;min-inline-size:0;width:100%;max-width:1440px;margin:0 auto;border:0;padding:2px 0 5px;display:flex;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;touch-action:pan-x}
 #studio-tools>*{flex:0 0 auto;white-space:nowrap}
 .studio-page #club-message{bottom:calc(105px + env(safe-area-inset-bottom))}
+
+.chat-fullscreen .chat-panel{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;max-width:none;margin:0;border-radius:0;background:#faf6ff;padding:env(safe-area-inset-top) max(12px,env(safe-area-inset-right)) env(safe-area-inset-bottom) max(12px,env(safe-area-inset-left));box-sizing:border-box}
+.chat-top{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 0}
+.chat-fullscreen .chat-list{flex:1;min-height:0;max-height:none;height:auto;overflow:auto}
+.chat-fullscreen .chat-form{flex:none}
+.chat-mine{flex-direction:row-reverse}
+.chat-mine .chat-message-body{background:#d9e9ff}
+.chat-admin .chat-message-body{background:#fff0b5;border:1px solid #ecc955}
+.chat-message-body{max-width:min(76%,610px)}
+.chat-fullscreen .club-message{z-index:40}
+#poll-panel{max-height:45dvh;overflow:auto;padding:8px 0}
+#poll-list article,.poll-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px;margin-bottom:8px;background:#fff;border-radius:12px}
+#poll-list article strong{width:100%}
+.poll-form label{display:grid;gap:4px}
+.art-actions{display:flex;flex-wrap:wrap;gap:5px}
+.art-actions .reaction-button{flex:1 1 40%;width:auto;text-align:center;min-height:40px}
+#drawing-preview{max-width:min(90vw,900px);border:0;border-radius:16px}
+#drawing-preview img{display:block;max-width:100%;max-height:74dvh;margin:10px auto}
+.studio-share-status{color:#23513b;font-weight:800;margin:8px 0}
+.studio-share-status:empty{display:none}

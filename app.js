@@ -241,6 +241,9 @@ function renderGames() {
   const dailyNumber = Number(today.slice(-2));
   const question = trivia[dailyNumber % trivia.length];
   const mission = missions[dailyNumber % missions.length];
+  const step = 2 + dailyNumber % 5;
+  const first = 1 + dailyNumber % 4;
+  const puzzleAnswer = first + step * 3;
   const card = byId('tab-content');
   card.innerHTML = `<div class="games-grid">
     <article class="game-card trivia-game"><div class="game-top"><span>🧠</span><small>TEAM TRIVIA</small><b>+5 ⭐</b></div><h3>Quick Brain Boost</h3><p class="game-question">${question.q}</p><div class="answer-list">${question.options.map(option => `<button class="answer-choice" data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join('')}</div></article>
@@ -248,6 +251,12 @@ function renderGames() {
     <article class="game-card"><h3>🎨 Doodle of the day</h3><a class="button button-purple" href="doodle.html">Try today’s doodle →</a></article>
     <article class="game-card"><h3>🔢 Number Quest <small>+4 ⭐</small></h3><p>What is ${dailyNumber} + 6?</p><div class="answer-list">${[dailyNumber + 5, dailyNumber + 7, dailyNumber + 6].sort((a,b) => (a % 3) - (b % 3)).map(n => `<button type="button" class="answer-choice" data-number="${n}">${n}</button>`).join('')}</div></article>
     <article class="game-card"><h3>💜 Kind Choice <small>+2 ⭐</small></h3><p>A teammate drops their pencils. What could you do?</p><div class="answer-list"><button class="answer-choice" data-kind="yes">Help pick them up</button><button class="answer-choice" data-kind="no">Walk past them</button></div></article>
+    <article class="game-card"><h3>🧩 Daily Puzzle <small>+3 ⭐</small></h3>
+      <p>What comes next? ${first}, ${first + step}, ${first + step * 2}, …</p>
+      <div class="answer-list">${[puzzleAnswer - 1, puzzleAnswer, puzzleAnswer + 1]
+        .sort((a,b) => (a % 3) - (b % 3))
+        .map(n => `<button class="answer-choice" data-puzzle="${n}">${n}</button>`).join('')}</div>
+    </article>
     <article class="game-card stars-game"><div class="game-top"><span>🏆</span><small>TEAM STARS</small><b>Leaderboard</b></div><h3>Cheer each other on</h3><div id="score-list" class="score-list"><p class="tiny-note">Loading team stars…</p></div></article>
   </div>`;
   const gameView = card.firstElementChild;
@@ -255,6 +264,7 @@ function renderGames() {
     { id: 'trivia', points: 5, buttons: qsa('[data-answer]', card), correct: button => button.dataset.answer === question.a },
     { id: 'kindness', points: 3, buttons: [byId('mission-done')], correct: () => true },
     { id: 'math', points: 4, buttons: qsa('[data-number]', card), correct: button => Number(button.dataset.number) === dailyNumber + 6 },
+    { id: 'puzzle', points: 3, buttons: qsa('[data-puzzle]', card), correct: button => Number(button.dataset.puzzle) === puzzleAnswer },
     { id: 'choice', points: 2, buttons: qsa('[data-kind]', card), correct: button => button.dataset.kind === 'yes' }
   ];
 
@@ -329,14 +339,16 @@ function renderChat() {
   const pictures = new Map();
   let messagesOnScreen = [];
 
-  byId('tab-content').innerHTML=`<section class="chat-panel"><div class="chat-guidelines">💬 Be kind 💜 Keep personal details private.</div><div id="chat-list" class="chat-list"><p class="tiny-note">Loading team chat…</p></div><form id="chat-form" class="chat-form"><label class="sr-only" for="chat-text">Write a kind team message</label><input id="chat-text" maxlength="350" placeholder="Write a kind team message…" ${chatMuted?'disabled':''} required><button class="button button-purple" type="submit" ${chatMuted?'disabled':''}>Send ✨</button></form>${chatMuted?'<p class="muted-notice">🔒 Chat paused</p>':''}</section>`;
+  byId('tab-content').innerHTML=`<section class="chat-panel"><header class="chat-top"><button class="reaction-button" id="close-chat">← Club</button><strong>💬 Team chat</strong><button class="reaction-button" id="open-polls">📊 Polls</button></header><section id="poll-panel" hidden></section><div class="chat-guidelines">💬 Be kind 💜 Keep personal details private.</div><div id="chat-list" class="chat-list"><p class="tiny-note">Loading team chat…</p></div><form id="chat-form" class="chat-form"><label class="sr-only" for="chat-text">Write a kind team message</label><input id="chat-text" maxlength="350" placeholder="Write a kind team message…" ${chatMuted?'disabled':''} required><button class="button button-purple" type="submit" ${chatMuted?'disabled':''}>Send ✨</button></form>${chatMuted?'<p class="muted-notice">🔒 Chat paused</p>':''}</section>`;
+  byId('close-chat').onclick = () => selectTab('home');
+  byId('open-polls').onclick = togglePolls;
   if(chatStop) chatStop();
   const messages=query(collection(db,'chat'),orderBy('createdAt','desc'),limit(35));
   const listView = byId("chat-list");
   function paintChat() {
     if (!listView.isConnected) return;
     const items = messagesOnScreen;
-    byId('chat-list').innerHTML=items.length?items.map(item=>`<article class="chat-message"><span class="feed-avatar">${avatarMarkup(pictures.get(item.uid) || item)}</span><div class="chat-message-body"><div><b>${escapeHtml(item.nickname||'Team friend')}</b><small>${item.uid===me.uid?'you':''}</small></div><p>${escapeHtml(item.text)}</p>${me.role==='admin'?`<button class="tiny-admin-action" data-delete-message="${item.id}">Remove message</button>`:''}</div></article>`).join(''):'<p class="empty-chat">No messages yet. Say a kind hello! 👋</p>';
+    byId('chat-list').innerHTML=items.length?items.map(item=>`<article class="chat-message ${item.uid === me.uid ? 'chat-mine' : ''} ${item.admin === true ? 'chat-admin' : ''}"><span class="feed-avatar">${avatarMarkup(pictures.get(item.uid) || item)}</span><div class="chat-message-body"><div><b>${escapeHtml(item.nickname||'Team friend')}</b><small>${item.uid===me.uid?'you':''}</small></div><p>${escapeHtml(item.text)}</p>${me.role==='admin'?`<button class="tiny-admin-action" data-delete-message="${item.id}">Remove message</button>`:''}</div></article>`).join(''):'<p class="empty-chat">No messages yet. Say a kind hello! 👋</p>';
     qsa('[data-delete-message]').forEach(button=>button.addEventListener('click',async()=>{try{await deleteDoc(doc(db,'chat',button.dataset.deleteMessage));}catch(error){showMessage(authFriendlyError(error),'error');}}));
     const list=byId('chat-list');list.scrollTop=list.scrollHeight;
   }
@@ -353,7 +365,7 @@ function renderChat() {
   byId('chat-form').addEventListener('submit',async event=>{
     event.preventDefault(); const input=byId('chat-text'); const text=input.value.trim();
     if(!text||chatMuted)return;
-    try { await addDoc(collection(db,'chat'),{uid:me.uid,nickname:me.nickname,avatar:me.avatar,text,createdAt:serverTimestamp()}); input.value=''; }
+    try { await addDoc(collection(db,'chat'),{uid:me.uid,nickname:me.nickname,avatar:me.avatar,admin:me.role==='admin',text,createdAt:serverTimestamp()}); input.value=''; }
     catch(error){showMessage(authFriendlyError(error),'error');}
   });
 }
@@ -364,67 +376,184 @@ function artRound(now = Date.now()) {
   return { week: now - elapsed, sunday: elapsed >= 518400000 };
 }
 
+async function saveWeeklyDrawing(strokes, week) {
+  const slots = Array.from({ length: 5 }, (_, index) => doc(db, 'weeklyArt', `${me.uid}_${week}_${index}`));
+  await runTransaction(db, async tx => {
+    const legacy = await tx.get(doc(db, 'artSlots', me.uid));
+    const oldArt = legacy.data()?.week === week ? await tx.get(doc(db, 'weeklyArt', legacy.data().art)) : null;
+    const snapshots = await Promise.all(slots.map(slot => tx.get(slot)));
+    const open = snapshots.findIndex((snapshot, index) => !snapshot.exists() && (index !== 0 || !oldArt?.exists()));
+    if (open < 0) throw new Error('ART_LIMIT');
+    tx.set(slots[open], { uid: me.uid, nickname: me.nickname, strokes, week, slot: open });
+  });
+}
+
 async function renderArt() {
-  const round = artRound();
-  byId('tab-content').innerHTML = '<div class="art-intro"><span aria-hidden="true">🎨</span><div><h3>Art &amp; votes</h3><p></p></div></div><div id="drawing-wall" class="drawing-wall" aria-live="polite"></div>';
+  const { week, sunday } = artRound();
+  byId('tab-content').innerHTML = `
+    <div class="art-intro"><span aria-hidden="true">🎨</span><div><h3>Art Corner</h3>
+    <p>5 drawings each week · 10 votes on Sunday</p><p id="art-vote-count"></p></div></div>
+    <p id="art-winner" role="status"></p>
+    <div id="drawing-wall" class="drawing-wall"></div>
+    <dialog id="drawing-preview"><button type="button" class="reaction-button">Close ✕</button><img alt=""></dialog>`;
   const wall = byId('drawing-wall');
-  byId('tab-content').querySelector('.art-intro p').textContent = round.sunday ? '⭐ Voting is open! Pick one favorite.' : '🗓️ Voting opens Sunday (India time).';
-  if (!round.sunday && !uploadsDisabled) {
-    const draw = document.createElement('button');
-    draw.className = 'button button-purple';
-    draw.textContent = '✏️ Draw';
-    draw.onclick = () => location.assign('doodle.html');
-    wall.before(draw);
-  }
+  const status = byId('art-vote-count');
+  const winnerStatus = byId('art-winner');
+  const viewer = byId('drawing-preview');
+  viewer.querySelector('button').onclick = () => viewer.close();
+  if (!sunday && !uploadsDisabled) wall.insertAdjacentHTML('beforebegin', '<a class="button button-purple" href="doodle.html">✏️ Draw</a>');
+  const voteRef = doc(db, 'weeklyBallots', `${me.uid}_${week}`);
   try {
-    const [arts, votes] = await Promise.all([
-      getDocs(query(collection(db, 'weeklyArt'), where('week', '==', round.week))),
-      getDocs(query(collection(db, 'artVotes'), where('week', '==', round.week)))
+    const [arts, ballot, result] = await Promise.all([
+      getDocs(query(collection(db, 'weeklyArt'), where('week', '==', week))),
+      getDoc(voteRef),
+      getDoc(doc(db, 'artResults', String(week - 604800000)))
     ]);
-    const myVote = votes.docs.find(vote => vote.id === me.uid);
-    const counts = new Map();
-    for (const vote of votes.docs) {
-      const id = vote.data().art;
-      counts.set(id, (counts.get(id) || 0) + 1);
-    }
+    if (!wall.isConnected) return;
+    const myVotes = ballot.data()?.choices || {};
+    const count = Object.keys(myVotes).length;
+    status.textContent = sunday ? `${count}/10 votes used · Change them until midnight IST` : 'Voting opens Sunday (India time).';
+    if (result.data()?.winnerName) winnerStatus.textContent = `🏆 Last week: ${result.data().winnerName} won 50 stars!`;
     if (arts.empty) wall.textContent = '🖍️ No doodles yet';
+    let busy = false;
+    async function changeVote(id, removeOnly = false) {
+      if (busy) return;
+      busy = true;
+      try {
+        await runTransaction(db, async tx => {
+          const live = await tx.get(voteRef);
+          const choices = { ...live.data()?.choices };
+          if (choices[id]) delete choices[id];
+          else if (removeOnly) return;
+          else if (Object.keys(choices).length < 10) choices[id] = true;
+          else throw new Error('VOTE_LIMIT');
+          tx.set(voteRef, { uid: me.uid, week, choices, target: id });
+        });
+        showMessage('Votes updated! ⭐', 'success');
+        if (wall.isConnected) renderArt();
+      } catch (error) {
+        showMessage(error.message === 'VOTE_LIMIT' ? 'Undo a vote before adding another.' : authFriendlyError(error), 'error');
+      } finally { busy = false; }
+    }
+    if (sunday) {
+      const visible = new Set(arts.docs.map(art => art.id));
+      for (const id of Object.keys(myVotes).filter(id => !visible.has(id))) {
+        const remove = document.createElement('button');
+        remove.className = 'reaction-button';
+        remove.textContent = 'Undo vote for removed drawing';
+        remove.onclick = () => changeVote(id, true);
+        wall.before(remove);
+      }
+    }
     for (const art of arts.docs) {
       const data = art.data();
+      if (!/^data:image\/(webp|png);base64,[a-z0-9+/=]+$/i.test(data.strokes)) continue;
       const card = document.createElement('article');
       card.className = 'drawing-card';
-      const img = document.createElement('img');
-      if (/^data:image\/(webp|png);base64,[a-z0-9+/=]+$/i.test(data.strokes)) img.src = data.strokes;
-      img.alt = 'Doodle by ' + data.nickname;
-      const label = document.createElement('p');
-      label.textContent = data.nickname;
-      card.append(img, label);
-      if (round.sunday) {
-        const vote = document.createElement('button');
-        vote.className = 'reaction-button';
-        vote.textContent = myVote?.data().art === art.id ? '✅ My vote' : data.uid === me.uid ? 'My drawing' : '⭐ Vote';
-        vote.setAttribute('aria-label', 'Vote for ' + data.nickname);
-        vote.disabled = Boolean(myVote) || data.uid === me.uid;
-        vote.onclick = async () => {
-          vote.disabled = true;
-          try {
-            await setDoc(doc(db, 'artVotes', me.uid), { week: round.week, art: art.id });
-            if (wall.isConnected) renderArt();
-            showMessage('Vote saved! ⭐', 'success');
-          } catch (error) {
-            vote.disabled = false;
-            showMessage(authFriendlyError(error), 'error');
-          }
+      const image = document.createElement('img');
+      image.src = data.strokes;
+      image.alt = 'Doodle by ' + data.nickname;
+      image.loading = 'lazy';
+      const name = document.createElement('p');
+      name.textContent = data.nickname;
+      const view = document.createElement('button');
+      view.className = 'reaction-button';
+      view.textContent = 'View';
+      view.onclick = () => {
+        const largeImage = viewer.querySelector('img');
+        largeImage.src = image.src;
+        largeImage.alt = image.alt;
+        viewer.showModal();
+      };
+      const download = document.createElement('a');
+      download.className = 'reaction-button';
+      download.href = data.strokes;
+      download.download = `igct-doodle.${data.strokes.startsWith('data:image/webp') ? 'webp' : 'png'}`;
+      download.textContent = 'Download';
+      const controls = document.createElement('div');
+      controls.className = 'art-actions';
+      controls.append(view, download);
+      const vote = document.createElement('button');
+      vote.className = 'reaction-button';
+      vote.textContent = myVotes[art.id] ? '✓ Undo vote' : '⭐ Vote';
+      vote.disabled = !sunday || data.uid === me.uid || (count >= 10 && !myVotes[art.id]);
+      vote.onclick = () => changeVote(art.id);
+      controls.append(vote);
+      if ((!sunday && data.uid === me.uid) || me.role === 'admin') {
+        const remove = document.createElement('button');
+        remove.className = 'reaction-button';
+        remove.textContent = 'Delete';
+        remove.onclick = async () => {
+          if (busy || !confirm('Delete this doodle and its entry in the contest?')) return;
+          busy = true;
+          try { await deleteDoc(art.ref); if (wall.isConnected) renderArt(); }
+          catch (error) { showMessage(authFriendlyError(error), 'error'); }
+          finally { busy = false; }
         };
-        card.append(vote);
-        if (myVote) {
-          const total = document.createElement('p');
-          total.textContent = '⭐ ' + (counts.get(art.id) || 0);
-          card.append(total);
-        }
+        controls.append(remove);
       }
+      card.append(image, name, controls);
       wall.append(card);
     }
   } catch (error) { wall.textContent = authFriendlyError(error); }
+}
+
+async function togglePolls() {
+  const panel = byId('poll-panel');
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) await renderPolls(panel);
+}
+
+async function renderPolls(panel) {
+  panel.innerHTML = '<h3>Team polls</h3><div id="poll-list"></div>';
+  const list = panel.querySelector('#poll-list');
+  if (me.role === 'admin') {
+    panel.insertAdjacentHTML('beforeend', `<form class="poll-form"><label>Question <input name="question" maxlength="100" required></label>
+      <label>Choice 1 <input name="first" maxlength="40" required></label>
+      <label>Choice 2 <input name="second" maxlength="40" required></label><button class="reaction-button">Create poll</button></form>`);
+    panel.querySelector('form').onsubmit = async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const fields = new FormData(form);
+      const [question, first, second] = ['question', 'first', 'second'].map(key => fields.get(key).trim());
+      if (!question || !first || !second || first.toLowerCase() === second.toLowerCase()) return showMessage('Enter a question and two different choices.');
+      const submit = form.querySelector('button');
+      submit.disabled = true;
+      try {
+        await addDoc(collection(db, 'teamPolls'), { question, first, second, createdAt: serverTimestamp() });
+        if (panel.isConnected) renderPolls(panel);
+      } catch (error) { showMessage(authFriendlyError(error), 'error'); }
+      finally { submit.disabled = false; }
+    };
+  }
+  try {
+    const polls = await getDocs(query(collection(db, 'teamPolls'), orderBy('createdAt', 'desc'), limit(5)));
+    if (!list.isConnected) return;
+    if (polls.empty) list.textContent = 'No polls yet.';
+    const cards = await Promise.all(polls.docs.map(async poll => {
+      const replies = await getDocs(collection(poll.ref, 'answers'));
+      const choices = [poll.data().first, poll.data().second];
+      const mine = replies.docs.find(reply => reply.id === me.uid)?.data().option;
+      const card = document.createElement('article');
+      const title = document.createElement('strong');
+      title.textContent = poll.data().question;
+      card.append(title);
+      choices.forEach((choice, option) => {
+        const button = document.createElement('button');
+        button.className = 'reaction-button';
+        button.textContent = `${mine === option ? '✓ ' : ''}${choice} · ${replies.docs.filter(reply => reply.data().option === option).length}`;
+        button.onclick = async () => {
+          button.disabled = true;
+          try { await setDoc(doc(poll.ref, 'answers', me.uid), { option }); if (list.isConnected) renderPolls(panel); }
+          catch (error) { showMessage(authFriendlyError(error), 'error'); }
+          finally { button.disabled = false; }
+        };
+        card.append(button);
+      });
+      return card;
+    }));
+    if (list.isConnected) list.append(...cards);
+  } catch (error) { list.textContent = authFriendlyError(error); }
 }
 
 async function renderTeam() {
@@ -436,9 +565,9 @@ async function renderTeam() {
     membersCache=people.docs.map(d=>({id:d.id,...d.data()}));
     byId('team-list').innerHTML=membersCache.length?membersCache.map(person=>{
       const flags=flagMap[person.uid];
-      return `<article class="team-person"><span class="feed-avatar">${avatarMarkup(person)}</span><div class="team-person-name"><b>${escapeHtml(person.nickname)}</b><small>@${escapeHtml(person.username)} ${flags?.role==='admin'?'· team admin':''}</small></div>${me.role==='admin'&&person.uid!==me.uid?`<div class="member-controls"><button class="reaction-button" data-member-action="chat" data-uid="${person.uid}">${flags?.chatMuted?'Unpause chat':'Pause chat'}</button><button class="reaction-button" data-member-action="uploads" data-uid="${person.uid}">${flags?.uploadsDisabled?'Allow art':'Pause art'}</button><button class="reaction-button" data-member-action="admin" data-uid="${person.uid}">${flags?.role==='admin'?'Remove admin':'Make admin'}</button><button class="reaction-button danger" data-member-action="remove" data-uid="${person.uid}">Remove</button></div>`:''}</article>`;
+      return `<article class="team-person"><span class="feed-avatar">${avatarMarkup(person)}</span><div class="team-person-name"><b>${escapeHtml(person.nickname)}</b><small>@${escapeHtml(person.username)} ${flags?.role==='admin'?'· team admin':''}</small></div>${me.role==='admin'&&person.uid!==me.uid?`<div class="member-controls"><button class="reaction-button" data-member-action="chat" data-uid="${person.uid}">${flags?.chatMuted?'Unpause chat':'Pause chat'}</button><button class="reaction-button" data-member-action="uploads" data-uid="${person.uid}">${flags?.uploadsDisabled?'Allow art':'Pause art'}</button><button class="reaction-button" data-member-action="admin" data-uid="${person.uid}">${flags?.role==='admin'?'Remove admin':'Make admin'}</button><button class="reaction-button" data-member-action="reset" data-uid="${person.uid}">🔑 Allow PIN reset</button><button class="reaction-button danger" data-member-action="remove" data-uid="${person.uid}">Remove</button></div>`:''}</article>`;
     }).join(''):'<p class="empty-chat">Your team is ready for friends to join! 🫶</p>';
-    qsa('[data-member-action]').forEach(button=>button.addEventListener('click',()=>manageMember(button.dataset.uid,button.dataset.memberAction,flagMap[button.dataset.uid])));
+    qsa('[data-member-action]').forEach(button=>button.addEventListener('click',()=>button.dataset.memberAction === 'reset' ? issueResetCode(button) : manageMember(button.dataset.uid,button.dataset.memberAction,flagMap[button.dataset.uid])));
     if(me.role==='admin') setupInviteControls();
   } catch(error){byId('team-list').innerHTML=`<p class="tiny-note">${escapeHtml(authFriendlyError(error))}</p>`;}
 }
@@ -598,6 +727,7 @@ function renderMe() {
 
 function selectTab(name) {
   activeTab = name;
+  document.body.classList.toggle('chat-fullscreen', name === 'chat');
   if (stopDailyScore) { stopDailyScore(); stopDailyScore = null; }
   if(chatStop){chatStop();chatStop=null;}
   qsa('.nav-item').forEach(item=>item.classList.toggle('active',item.dataset.tab===name));
@@ -674,16 +804,12 @@ function setupStudioShare(canvas) {
       if(png.length>800000) throw new Error('DRAWING_TOO_LARGE');
       const round = artRound();
       if (round.sunday) throw new Error('VOTE_DAY');
-      const art = doc(collection(db, 'weeklyArt'));
-      const slot = doc(db, 'artSlots', me.uid);
-      await runTransaction(db, async tx => {
-        const previous = await tx.get(slot);
-        if (previous.data()?.week === round.week) throw new Error('ART_LIMIT');
-        tx.set(slot, { week: round.week, art: art.id });
-        tx.set(art, { uid: me.uid, nickname: me.nickname, strokes: png, week: round.week });
-      });
-      button.dataset.shared = 'yes'; showMessage('Doodle shared with your team! 🎨','success');
-    } catch(error) { showMessage(error.message==='ART_LIMIT'?'One doodle each week!':error.message==='VOTE_DAY'?'Sunday is for voting!':error.message==='DRAWING_TOO_LARGE'?'Try a simpler drawing and share again.':authFriendlyError(error),'error'); }
+      await saveWeeklyDrawing(png, round.week);
+      button.dataset.shared = 'yes';
+      button.textContent = '✅ Doodle shared!';
+      byId('studio-share-status').textContent = 'Your doodle is in Art Corner!';
+      showMessage('Doodle shared successfully! 🎉', 'success');
+    } catch(error) { showMessage(error.message==='ART_LIMIT'?'You have 5 drawings. Delete one in Art Corner first.':error.message==='VOTE_DAY'?'Sunday is for voting!':error.message==='DRAWING_TOO_LARGE'?'Try a simpler drawing and share again.':authFriendlyError(error),'error'); }
     finally { button.disabled = button.dataset.shared === "yes"; }
   });
 }
@@ -692,3 +818,111 @@ function setupStudioShare(canvas) {
 
 
 
+
+
+
+
+async function callPinReset(name, data) {
+  const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/13.4.0/firebase-functions.js');
+  return (await httpsCallable(getFunctions(firebaseApp, 'asia-south1'), name)(data)).data;
+}
+
+async function issueResetCode(button) {
+  button.disabled = true;
+  try {
+    const result = await callPinReset('allowPinReset', { uid: button.dataset.uid });
+    if (!button.isConnected) return;
+    const person = membersCache.find(item => item.uid === button.dataset.uid);
+    const dialog = document.createElement('dialog');
+    dialog.className = 'pin-code-dialog';
+    dialog.innerHTML = '<h2>PIN reset code</h2><p class="code-user"></p><p>Give this privately to your teammate. It works once and expires in 15 minutes.</p><code></code><div class="profile-photo-actions"><button class="button button-purple" type="button">Copy code</button><form method="dialog"><button class="reaction-button">Close</button></form></div>';
+    dialog.querySelector('.code-user').textContent = person ? '@' + person.username : '';
+    dialog.querySelector('code').textContent = result.code;
+    dialog.querySelector('[type="button"]').onclick = async event => {
+      const copy = event.currentTarget;
+      try { await navigator.clipboard.writeText(result.code); copy.textContent = '✓ Copied'; }
+      catch { copy.textContent = 'Select the code to copy'; }
+    };
+    dialog.addEventListener('close', () => dialog.remove(), { once: true });
+    document.body.append(dialog);
+    dialog.showModal();
+  } catch (error) {
+    const message = ['functions/permission-denied','functions/failed-precondition','functions/aborted'].includes(error.code)
+      ? error.message : 'Could not create the reset code. Ask the club owner to check the reset service.';
+    showMessage(message, 'error');
+  } finally { button.disabled = false; }
+}
+
+const forgotPin = byId('forgot-pin');
+if (forgotPin) {
+  const panel = byId('pin-recovery');
+  const check = byId('pin-reset-check');
+  const finish = byId('pin-reset-finish');
+  const userField = byId('recovery-username');
+  const codeField = byId('recovery-code');
+  const status = byId('pin-recovery-status');
+  let verified;
+
+  forgotPin.onclick = () => {
+    panel.hidden = !panel.hidden;
+    forgotPin.setAttribute('aria-expanded', String(!panel.hidden));
+    if (!panel.hidden) {
+      userField.value ||= byId('username').value;
+      (verified ? byId('recovery-pin') : userField).focus();
+    }
+  };
+  function clearApproval() {
+    verified = null;
+    finish.reset();
+    finish.hidden = true;
+  }
+  check.addEventListener('input', clearApproval);
+  check.addEventListener('submit', async event => {
+    event.preventDefault();
+    clearApproval();
+    const username = cleanUsername(userField.value).replace(/^@/, '');
+    const code = codeField.value.trim();
+    const button = check.querySelector('button');
+    userField.disabled = codeField.disabled = button.disabled = true;
+    status.textContent = 'Checking your code…';
+    try {
+      await callPinReset('checkPinReset', { username, code });
+      verified = { username, code };
+      finish.hidden = false;
+      status.textContent = 'Your admin approved this reset. Choose a new PIN.';
+      byId('recovery-pin').focus();
+    } catch (error) {
+      status.textContent = error.code === 'functions/failed-precondition'
+        ? 'Ask your admin friend to allow a reset and give you a fresh code.'
+        : 'Could not check the code. Try again or ask your admin friend for help.';
+    } finally { userField.disabled = codeField.disabled = button.disabled = false; }
+  });
+  finish.addEventListener('submit', async event => {
+    event.preventDefault();
+    const approval = verified;
+    const pin = byId('recovery-pin').value;
+    if (!approval) return;
+    if (!/^\d{4}$/.test(pin) || pin !== byId('recovery-confirm').value) {
+      status.textContent = 'Enter the same four digits in both boxes.';
+      return;
+    }
+    const button = finish.querySelector('button');
+    const checkButton = check.querySelector('button');
+    button.disabled = checkButton.disabled = userField.disabled = codeField.disabled = true;
+    status.textContent = 'Saving your new PIN…';
+    try {
+      const password = await pinPassword(approval.username, pin);
+      await callPinReset('finishPinReset', { ...approval, password });
+      clearApproval();
+      check.reset();
+      byId('username').value = approval.username;
+      byId('pin').value = '';
+      status.textContent = '✅ PIN saved! Sign in above with your new PIN.';
+    } catch (error) {
+      clearApproval();
+      status.textContent = error.code === 'functions/failed-precondition'
+        ? 'This code expired or was used. Ask your admin friend for a new one.'
+        : 'Try signing in with the new PIN. If it fails, ask your admin for a fresh code.';
+    } finally { button.disabled = checkButton.disabled = userField.disabled = codeField.disabled = false; }
+  });
+}

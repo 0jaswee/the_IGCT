@@ -50,7 +50,7 @@ Photo uploads are deliberately off. Firebase now requires the pay-as-you-go Blaz
 
 ## Weekly art
 
-Publish the updated firestore.rules before using this revision. Members share one canvas doodle Monday through Saturday, then vote once on Sunday (India time). They cannot vote for their own entry. Art and vote counts shown in the app reset to the new round each Monday. Earlier doodles stay in Firestore.
+Publish the updated firestore.rules before using this revision. Members can share five canvas doodles Monday through Saturday. Deleting one frees a slot. On Sunday, members can vote for up to ten different drawings from teammates and undo votes until midnight, India time.
 
 ## Profile pictures
 
@@ -58,10 +58,31 @@ Members can upload or remove a small profile picture under Me. Publish the inclu
 
 ## Doodle Studio and stars
 
-Open doodle.html through Try today's doodle. Use Brush, Fill, Eraser, Circle, Box, Undo, or Clear. Share one drawing each week Monday through Saturday. Publish the included firestore.rules to enable daily star tracking. Stars carry forward on the leaderboard. Activities award stars once per day, India time. The activities are casual and answers run in the browser.
+Open doodle.html through Try today's doodle. Use Brush, Fill, Eraser, Circle, Box, Undo, or Clear. Share up to five drawings each week, Monday through Saturday. Publish the included firestore.rules to enable daily star tracking. Stars carry forward on the leaderboard. Activities award stars once per day, India time. The activities are casual and answers run in the browser.
 
 ## Install IGCT
 
 Tap Install IGCT on the home page after deploying to GitHub Pages. The app opens on its own home screen. Sign-in, sharing and team data require internet access.
 
 Publish the included Firestore rules for server enforcement of one star award per activity per India calendar day.
+
+## Weekly cleanup and winner award
+
+The new week starts Monday at midnight India time. The GitHub Actions workflow in .github/workflows/close-art-week.yml counts finished rounds, grants 50 stars once to the highest voted drawing, saves the winner's name, and deletes that round’s shared drawings and votes. If drawings tie, the job uses the first drawing ID in alphabetical order. A round with no votes has no winner. Downloads already saved to a device are unaffected.
+
+1. Commit the ZIP contents to the default branch, including the hidden .github folder.
+2. Publish the included firestore.rules in the IGCT Firebase console alongside the website update.
+3. Create a dedicated Google Cloud service account in the IGCT project. Grant Cloud Datastore User for Firestore. If your organization permits service account keys, add its JSON key to the repository's Actions secrets as IGCT_FIREBASE_CREDENTIALS. Never commit the key or add it to any website file.
+4. Enable Actions and run Close IGCT art week once from the Actions tab. The schedule runs Mondays around 00:07 and 02:07 India time. Scheduled starts can be delayed. The job processes only completed rounds, so it can be rerun if needed.
+
+The previous single-vote ballots for an already-running round are counted when the voter has no replacement ballot. The older week’s art disappears from Art Corner when the week changes. Database deletion and the 50-star award happen only after the scheduled job succeeds.
+
+## Admin PIN recovery
+
+In Team, an active admin can use Allow PIN reset for another active teammate. Share the 15-minute code privately. On the login screen, the teammate opens Forgot your PIN?, enters their username and code, then chooses a new PIN. A fresh approval replaces the previous code. The functions use Firebase Admin to update the same account, so profile and stars are preserved.
+
+Deploy the recovery functions from the project root with the Firebase CLI:
+
+  firebase deploy --project igct-game-changers-club --only functions:allowPinReset,functions:checkPinReset,functions:finishPinReset
+
+Firebase requires Blaze billing to deploy Cloud Functions. Use a runtime service account with Firebase Authentication Admin and Cloud Datastore User permissions for this project. The functions run on Firebase and the web files can stay on GitHub Pages. Publish the included Firestore rules as part of the update. No service account key is needed in the website or in this ZIP for PIN recovery.

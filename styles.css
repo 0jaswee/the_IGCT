@@ -11,3 +11,11 @@
 .welcome-page .home-entry .hero-actions{margin:0}
 .welcome-page .home-entry .button{min-height:62px;border:2px solid #6656e8;font-weight:900}
 .login-layout .login-card{margin-top:18px}
+
+.pin-reset-link{display:block;width:100%;min-height:46px;margin:16px 0 8px;border:2px solid #e4d7ff;border-radius:14px;background:#f3ebff;color:#3d2479;font:inherit;font-weight:900;cursor:pointer}
+#pin-recovery{padding:14px;border-radius:14px;background:#f8f4ff;margin-top:12px}
+#pin-recovery [hidden],#pin-recovery[hidden]{display:none}
+#pin-recovery h2{margin:0}
+#pin-recovery-status{font-weight:800;color:#49356f}
+.pin-code-dialog{max-width:min(90vw,440px);border:0;border-radius:16px;padding:22px}
+.pin-code-dialog code{display:block;overflow-wrap:anywhere;font-size:1.15rem;padding:12px;background:#f3ebff;margin:10px 0}
