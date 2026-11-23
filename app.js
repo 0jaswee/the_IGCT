@@ -80,7 +80,55 @@ if (joinLink && new URLSearchParams(location.search).has('invite')) {
 const inviteInput = byId('invite-code');
 if (inviteInput) inviteInput.value = new URLSearchParams(location.search).get('invite') || '';
 
+const avatarFile = byId('avatar-file');
+const avatarPreview = byId('avatar-preview');
+let avatarPhoto = '';
+let avatarProcessing = false;
+let avatarVersion = 0;
+
+function avatarMarkup(profile) {
+  const photo = profile.avatarPhoto;
+  if (typeof photo === 'string' && photo.length <= 20000 &&
+      /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo)) {
+    return `<img src="${photo}" width="28" height="28" alt="" style="border-radius:50%;object-fit:cover;vertical-align:middle">`;
+  }
+  return escapeHtml(profile.avatar || '⭐');
+}
+
+async function makeAvatar(file) {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+    throw new Error('Choose a JPG, PNG or WebP under 5 MB.');
+  }
+  const image = await createImageBitmap(file);
+  try {
+    const size = Math.min(image.width, image.height);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 96;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, 96, 96);
+    context.drawImage(image, (image.width - size) / 2, (image.height - size) / 2, size, size, 0, 0, 96, 96);
+    const icon = canvas.toDataURL('image/jpeg', 0.72);
+    if (icon.length > 20000) throw new Error('Choose a simpler image.');
+    return icon;
+  } finally {
+    image.close();
+  }
+}
+
+function clearAvatarPhoto() {
+  avatarVersion++;
+  avatarProcessing = false;
+  avatarPhoto = '';
+  if (!avatarPreview) return;
+  avatarPreview.hidden = true;
+  avatarPreview.removeAttribute('src');
+  byId('avatar-status').textContent = '';
+}
+
 qsa('[data-avatar]').forEach(button => button.addEventListener('click', () => {
+  clearAvatarPhoto();
+  if (avatarFile) avatarFile.value = '';
   selectedAvatar = button.dataset.avatar;
   qsa('[data-avatar]').forEach(item => {
     const chosen = item === button;
@@ -89,10 +137,39 @@ qsa('[data-avatar]').forEach(button => button.addEventListener('click', () => {
   });
 }));
 
+avatarFile?.addEventListener('change', async () => {
+  clearAvatarPhoto();
+  const file = avatarFile.files[0];
+  if (!file) return;
+  const version = avatarVersion;
+  avatarProcessing = true;
+  byId('avatar-status').textContent = 'Preparing icon…';
+  try {
+    const icon = await makeAvatar(file);
+    if (version !== avatarVersion) return;
+    avatarPhoto = icon;
+    avatarPreview.src = icon;
+    avatarPreview.hidden = false;
+    byId('avatar-status').textContent = 'Photo icon selected';
+    qsa('[data-avatar]').forEach(button => {
+      button.classList.remove('selected');
+      button.setAttribute('aria-pressed', 'false');
+    });
+  } catch (error) {
+    if (version !== avatarVersion) return;
+    if (avatarFile) avatarFile.value = '';
+    byId('avatar-status').textContent = error instanceof DOMException ? 'Could not open that image. Choose another.' : error.message;
+  } finally {
+    if (version === avatarVersion) avatarProcessing = false;
+  }
+});
+
 // First account initializes the team as admin. The QR is created only after that account exists.
 byId('join-form')?.addEventListener('submit', async event => {
   event.preventDefault();
   writeFormError('join-error', '');
+  if (avatarProcessing) return writeFormError('join-error', 'Wait for your icon preview.');
+  const profileIcon = { avatar: selectedAvatar, ...(avatarPhoto ? { avatarPhoto } : {}) };
   const nickname = byId('nickname').value.trim();
   const username = cleanUsername(byId('username').value);
   const pin = byId('pin').value;
@@ -111,7 +188,7 @@ byId('join-form')?.addEventListener('submit', async event => {
     const password = await pinPassword(username, pin);
     credential = await createUserWithEmailAndPassword(auth, pseudoEmail(username), password);
     const uid = credential.user.uid;
-    const profile = { uid, username, nickname, avatar: selectedAvatar, createdAt: serverTimestamp() };
+    const profile = { uid, username, nickname, ...profileIcon, createdAt: serverTimestamp() };
     const member = { uid, role: 'member', status: 'active', chatMuted: false, uploadsDisabled: false, createdAt: serverTimestamp() };
     const generated = randomInvite();
     const generatedHash = await digestText(generated);
@@ -136,7 +213,7 @@ byId('join-form')?.addEventListener('submit', async event => {
         transaction.set(profileRef(uid), profile);
       }
     });
-    if (becameAdmin) sessionStorage.setItem('igct_new_admin_invite', generated);
+    if (becameAdmin) sessionStorage.setItem('igct_invite_' + uid, generated);
     location.assign('club.html');
   } catch (error) {
     // Remove a just-created login if the invite code or the protected join transaction failed.
@@ -274,12 +351,12 @@ async function loadScores() {
     ]);
     const profileMap = Object.fromEntries(profiles.docs.map(s=>[s.id,s.data()]));
     const rows=scores.docs.map(s=>({score:s.data(),profile:profileMap[s.id]})).filter(x=>x.profile);
-    byId('score-list').innerHTML=rows.length?rows.map((r,i)=>`<div class="score-row"><span class="rank">${['🥇','🥈','🥉'][i]||`${i+1}.`}</span><span>${r.profile.avatar} ${escapeHtml(r.profile.nickname)}</span><b>${r.score.points} ⭐</b></div>`).join(''):'<p class="tiny-note">Earn the first team stars and start the cheer board!</p>';
+    byId('score-list').innerHTML=rows.length?rows.map((r,i)=>`<div class="score-row"><span class="rank">${['🥇','🥈','🥉'][i]||`${i+1}.`}</span><span>${avatarMarkup(r.profile)} ${escapeHtml(r.profile.nickname)}</span><b>${r.score.points} ⭐</b></div>`).join(''):'<p class="tiny-note">Earn the first team stars and start the cheer board!</p>';
   } catch { byId('score-list').innerHTML='<p class="tiny-note">Team stars will show after Firestore is set up.</p>'; }
 }
 
 function renderHome() {
-  byId('tab-content').innerHTML = `<div class="home-grid"><article class="feed-card"><div class="feed-head"><span class="feed-avatar">${me.avatar}</span><div><strong>Welcome to IGCT, ${escapeHtml(me.nickname)}!</strong><small>Your team space is ready</small></div></div><p class="feed-body">Try a game, share a kind message, or make a team doodle. Remember: be kind, include everyone, and ask a grown-up if anything feels uncomfortable.</p><div class="feed-art" aria-label="A cheerful rainbow and flowers">🌈🌱🌼</div></article><article class="feed-card home-quick"><div class="feed-head"><span class="feed-avatar">🎮</span><div><strong>Today's team games</strong><small>Play and collect team stars!</small></div></div><button class="button button-purple full-button" data-switch="games">See the games →</button></article><article class="feed-card home-quick"><div class="feed-head"><span class="feed-avatar">🫶</span><div><strong>Today's kindness quest</strong><small>One small kind thing can make a big day.</small></div></div><p class="feed-body">Give a teammate a kind compliment today.</p></article></div>`;
+  byId('tab-content').innerHTML = `<div class="home-grid"><article class="feed-card"><div class="feed-head"><span class="feed-avatar">${avatarMarkup(me)}</span><div><strong>Welcome to IGCT, ${escapeHtml(me.nickname)}!</strong><small>Your team space is ready</small></div></div><p class="feed-body">Try a game, share a kind message, or make a team doodle. Remember: be kind, include everyone, and ask a grown-up if anything feels uncomfortable.</p><div class="feed-art" aria-label="A cheerful rainbow and flowers">🌈🌱🌼</div></article><article class="feed-card home-quick"><div class="feed-head"><span class="feed-avatar">🎮</span><div><strong>Today's team games</strong><small>Play and collect team stars!</small></div></div><button class="button button-purple full-button" data-switch="games">See the games →</button></article><article class="feed-card home-quick"><div class="feed-head"><span class="feed-avatar">🫶</span><div><strong>Today's kindness quest</strong><small>One small kind thing can make a big day.</small></div></div><p class="feed-body">Give a teammate a kind compliment today.</p></article></div>`;
   byId('tab-content').querySelector('[data-switch]')?.addEventListener('click',()=>selectTab('games'));
 }
 
@@ -370,7 +447,7 @@ async function renderArt() {
 }
 
 async function renderTeam() {
-  byId('tab-content').innerHTML=`<div class="team-head-card"><span>🧸</span><div><h3>Team buddies</h3><p>Say hello to your fellow game changers.</p></div></div><div id="team-list" class="team-list"><p class="tiny-note">Loading your team…</p></div>${me.role==='admin'?'<section class="admin-panel"><div class="admin-panel-heading"><span>👑</span><div><h3>Team leader tools</h3><p>Manage helpers and keep the club friendly.</p></div></div><div class="invite-controls"><button class="button button-purple" id="new-invite">Make a new team QR</button><button class="reaction-button" id="copy-invite" disabled>Copy join link</button></div><div id="invite-output" class="invite-output"></div><div class="photo-lock">Photo uploads stay paused: Firebase requires switching this project to its pay-as-you-go plan before Cloud Storage can be enabled. Chat and games still use the free database allowance.</div></section>':''}`;
+  byId('tab-content').innerHTML=`<div class="team-head-card"><span>🧸</span><div><h3>Team buddies</h3><p>Say hello to your fellow game changers.</p></div></div><div id="team-list" class="team-list"><p class="tiny-note">Loading your team…</p></div>${me.role==='admin'?'<section class="admin-panel"><div class="admin-panel-heading"><span>👑</span><div><h3>Team leader tools</h3><p>Manage helpers and keep the club friendly.</p></div></div><div class="invite-controls"><button class="button button-purple" id="new-invite">Make a new team code</button><button class="reaction-button" id="copy-invite" disabled>Copy join link</button></div><div id="invite-output" class="invite-output"></div><div class="photo-lock">Photo uploads stay paused: Firebase requires switching this project to its pay-as-you-go plan before Cloud Storage can be enabled. Chat and games still use the free database allowance.</div></section>':''}`;
   try {
     const people=await getDocs(collection(db,'profiles'));
     const memberDocs=me.role==='admin'?await getDocs(collection(db,'members')):null;
@@ -378,7 +455,7 @@ async function renderTeam() {
     membersCache=people.docs.map(d=>({id:d.id,...d.data()}));
     byId('team-list').innerHTML=membersCache.length?membersCache.map(person=>{
       const flags=flagMap[person.uid];
-      return `<article class="team-person"><span class="feed-avatar">${escapeHtml(person.avatar)}</span><div class="team-person-name"><b>${escapeHtml(person.nickname)}</b><small>@${escapeHtml(person.username)} ${flags?.role==='admin'?'· team admin':''}</small></div>${me.role==='admin'&&person.uid!==me.uid?`<div class="member-controls"><button class="reaction-button" data-member-action="chat" data-uid="${person.uid}">${flags?.chatMuted?'Unpause chat':'Pause chat'}</button><button class="reaction-button" data-member-action="uploads" data-uid="${person.uid}">${flags?.uploadsDisabled?'Allow art':'Pause art'}</button><button class="reaction-button" data-member-action="admin" data-uid="${person.uid}">${flags?.role==='admin'?'Remove admin':'Make admin'}</button><button class="reaction-button danger" data-member-action="remove" data-uid="${person.uid}">Remove</button></div>`:''}</article>`;
+      return `<article class="team-person"><span class="feed-avatar">${avatarMarkup(person)}</span><div class="team-person-name"><b>${escapeHtml(person.nickname)}</b><small>@${escapeHtml(person.username)} ${flags?.role==='admin'?'· team admin':''}</small></div>${me.role==='admin'&&person.uid!==me.uid?`<div class="member-controls"><button class="reaction-button" data-member-action="chat" data-uid="${person.uid}">${flags?.chatMuted?'Unpause chat':'Pause chat'}</button><button class="reaction-button" data-member-action="uploads" data-uid="${person.uid}">${flags?.uploadsDisabled?'Allow art':'Pause art'}</button><button class="reaction-button" data-member-action="admin" data-uid="${person.uid}">${flags?.role==='admin'?'Remove admin':'Make admin'}</button><button class="reaction-button danger" data-member-action="remove" data-uid="${person.uid}">Remove</button></div>`:''}</article>`;
     }).join(''):'<p class="empty-chat">Your team is ready for friends to join! 🫶</p>';
     qsa('[data-member-action]').forEach(button=>button.addEventListener('click',()=>manageMember(button.dataset.uid,button.dataset.memberAction,flagMap[button.dataset.uid])));
     if(me.role==='admin') setupInviteControls();
@@ -405,8 +482,17 @@ async function setupInviteControls() {
   const newButton=byId('new-invite');
   const copyButton=byId('copy-invite');
   if(!newButton)return;
-  const firstInvite=sessionStorage.getItem('igct_new_admin_invite');
-  if(firstInvite) showInvite(firstInvite);
+  const firstInvite=sessionStorage.getItem('igct_invite_' + me.uid);
+  if (firstInvite) {
+    try {
+      const settings = await getDoc(settingsRef());
+      if (settings.data()?.inviteHash === await digestText(firstInvite) && newButton.isConnected) {
+        showInvite(firstInvite);
+      }
+    } catch (error) {
+      showMessage(authFriendlyError(error), 'error');
+    }
+  }
   newButton.addEventListener('click',async()=>{
     newButton.disabled=true;
     try {
@@ -418,13 +504,13 @@ async function setupInviteControls() {
       batch.set(doc(db,'invites',hash),{active:true,createdBy:me.uid,createdAt:serverTimestamp()});
       batch.update(settingsRef(),{inviteHash:hash});
       await batch.commit();
-      sessionStorage.setItem('igct_new_admin_invite',raw);
+      sessionStorage.setItem('igct_invite_' + me.uid, raw);
       showInvite(raw);
     } catch(error){showMessage(authFriendlyError(error),'error');}
     finally{newButton.disabled=false;}
   });
   copyButton.addEventListener('click',async()=>{
-    const raw=sessionStorage.getItem('igct_new_admin_invite');if(!raw)return;
+    const raw=sessionStorage.getItem('igct_invite_' + me.uid);if(!raw)return;
     const link=`${location.origin}${location.pathname.replace(/club\.html$/,'')}index.html?invite=${encodeURIComponent(raw)}`;
     try{await navigator.clipboard.writeText(link);showMessage('Team join link copied. Turn it into a QR to share!','success');}catch{showMessage(link);}
   });
@@ -432,14 +518,15 @@ async function setupInviteControls() {
 function showInvite(raw) {
   const box=byId('invite-output'); if(!box)return;
   const link=`${location.origin}${location.pathname.replace(/club\.html$/,'')}index.html?invite=${encodeURIComponent(raw)}`;
-  box.innerHTML=`<div id="invite-qr" class="invite-qr"></div><p>Scan this QR to open the team join page.</p><small>Keep this invite for your group. Make a new one if it gets shared outside the team.</small>`;
+  box.innerHTML=`<div id="invite-qr" class="invite-qr"></div><div><p>Team code</p><code id="team-code" style="overflow-wrap:anywhere"></code><p>Scan the QR or paste this code on the join page.</p></div><small>Keep this invite for your group. Make a new one if it gets shared outside the team.</small>`;
+  byId('team-code').textContent = raw;
   byId('copy-invite').disabled=false;
   if(window.QRCode)new window.QRCode(byId('invite-qr'),{text:link,width:168,height:168,colorDark:'#2c2552',colorLight:'#ffffff',correctLevel:window.QRCode.CorrectLevel.M});
   else byId('invite-qr').textContent='QR helper is loading — use Copy join link.';
 }
 
 function renderMe() {
-  byId('tab-content').innerHTML=`<article class="profile-summary"><span class="profile-avatar">${me.avatar}</span><div><div class="eyebrow">${me.role==='admin'?'TEAM ADMIN':'TEAM MEMBER'}</div><h3>${escapeHtml(me.nickname)}</h3><p>@${escapeHtml(me.username)}</p></div></article><div class="privacy-card">🛡️ Your profile uses a nickname and avatar. Never post your full name, school, home address, phone number, password, or private photos.</div><button class="button button-purple full-button" id="profile-signout">Sign out of IGCT</button>`;
+  byId('tab-content').innerHTML=`<article class="profile-summary"><span class="profile-avatar">${avatarMarkup(me)}</span><div><div class="eyebrow">${me.role==='admin'?'TEAM ADMIN':'TEAM MEMBER'}</div><h3>${escapeHtml(me.nickname)}</h3><p>@${escapeHtml(me.username)}</p></div></article><div class="privacy-card">🛡️ Your profile uses a nickname and avatar. Never post your full name, school, home address, phone number, password, or private photos.</div><button class="button button-purple full-button" id="profile-signout">Sign out of IGCT</button>`;
   byId('profile-signout').addEventListener('click',async()=>{await signOut(auth);location.assign('index.html');});
 }
 
@@ -469,7 +556,7 @@ if(clubPage){
       me={uid:user.uid,...memberSnap.data(),...profileSnap.data()};
       chatMuted=Boolean(me.chatMuted);uploadsDisabled=Boolean(me.uploadsDisabled);
       byId('greeting').textContent=`Hey, ${me.nickname}!`;
-      byId('club-avatar').textContent=me.avatar;
+      byId('club-avatar').innerHTML = avatarMarkup(me);
       selectTab('home');
       onSnapshot(memberRef(user.uid), snapshot => {
         const flags = snapshot.data();
@@ -488,4 +575,6 @@ if(clubPage){
     }catch(error){showMessage(authFriendlyError(error),'error');}
   });
 }
+
+
 
