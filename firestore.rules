@@ -1,0 +1,174 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function memberPath(uid) { return /databases/$(database)/documents/members/$(uid); }
+    function settingsPath() { return /databases/$(database)/documents/system/club; }
+    function groupInfoPath() { return /databases/$(database)/documents/system/groupInfo; }
+    function myMember() { return get(memberPath(request.auth.uid)).data; }
+    function activeMember() {
+      return signedIn() && exists(memberPath(request.auth.uid)) && myMember().status == 'active';
+    }
+    function isAdmin() { return activeMember() && myMember().role == 'admin'; }
+    function validProfile(data) {
+      return data.keys().hasOnly(['uid', 'username', 'nickname', 'avatar', 'createdAt'])
+        && data.uid == request.auth.uid
+        && data.username is string && data.username.size() >= 3 && data.username.size() <= 16
+        && data.nickname is string && data.nickname.size() >= 2 && data.nickname.size() <= 20
+        && data.avatar is string && data.avatar.size() <= 8;
+    }
+
+    match /system/club {
+      allow get: if isAdmin() || activeMember();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.adminUid == request.auth.uid
+        && existsAfter(memberPath(request.auth.uid))
+        && getAfter(memberPath(request.auth.uid)).data.role == 'admin'
+        && request.resource.data.keys().hasOnly(['groupName', 'adminUid', 'inviteHash', 'createdAt']);
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inviteHash', 'groupName']);
+      allow delete: if false;
+    }
+
+    match /system/groupInfo {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && existsAfter(memberPath(request.auth.uid))
+        && getAfter(memberPath(request.auth.uid)).data.role == 'admin'
+        && request.resource.data.keys().hasOnly(['groupName', 'createdAt']);
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['groupName']);
+      allow delete: if false;
+    }
+
+    match /members/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['uid', 'role', 'status', 'chatMuted', 'uploadsDisabled', 'createdAt', 'inviteProof'])
+        && request.resource.data.uid == uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.chatMuted == false
+        && request.resource.data.uploadsDisabled == false
+        && (
+          (request.resource.data.role == 'admin'
+            && !exists(settingsPath())
+            && existsAfter(settingsPath())
+            && getAfter(settingsPath()).data.adminUid == uid)
+          ||
+          (request.resource.data.role == 'member'
+            && exists(settingsPath())
+            && request.resource.data.inviteProof == get(settingsPath()).data.inviteHash
+            && exists(/databases/$(database)/documents/invites/$(request.resource.data.inviteProof))
+            && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteProof)).data.active == true)
+        );
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'status', 'chatMuted', 'uploadsDisabled'])
+        && request.resource.data.role in ['admin', 'member']
+        && request.resource.data.status in ['active', 'removed']
+        && request.resource.data.chatMuted is bool
+        && request.resource.data.uploadsDisabled is bool;
+      allow delete: if isAdmin() && uid != request.auth.uid;
+    }
+
+    match /profiles/{uid} {
+      allow get, list: if activeMember();
+      allow create: if signedIn() && request.auth.uid == uid
+        && validProfile(request.resource.data)
+        && existsAfter(memberPath(uid));
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'avatar'])
+        && request.resource.data.nickname is string
+        && request.resource.data.nickname.size() >= 2
+        && request.resource.data.nickname.size() <= 20;
+      allow delete: if isAdmin() && uid != request.auth.uid;
+    }
+
+    match /invites/{hash} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && request.resource.data.active == true
+        && request.resource.data.createdBy == request.auth.uid
+        && (isAdmin() || getAfter(settingsPath()).data.adminUid == request.auth.uid);
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active']);
+      allow delete: if isAdmin();
+    }
+
+    match /chat/{messageId} {
+      allow read: if activeMember();
+      allow create: if activeMember() && myMember().chatMuted == false
+        && request.resource.data.keys().hasOnly(['uid', 'nickname', 'avatar', 'text', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 350;
+      allow update, delete: if isAdmin();
+    }
+
+    match /scores/{uid} {
+      allow read: if activeMember();
+      allow create: if activeMember() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['uid', 'points', 'updatedAt'])
+        && request.resource.data.uid == uid
+        && request.resource.data.points is int
+        && request.resource.data.points >= 0
+        && request.resource.data.points <= 10000;
+      allow update: if activeMember() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'updatedAt'])
+        && request.resource.data.points is int
+        && request.resource.data.points >= resource.data.points
+        && request.resource.data.points <= resource.data.points + 20;
+      allow delete: if isAdmin();
+    }
+
+    // Monday midnight and Sunday voting, India time.
+    function elapsed() { return (request.time.toMillis() + 279000000) % 604800000; }
+    function weekStart() { return request.time.toMillis() - elapsed(); }
+    function sunday() { return elapsed() >= 518400000; }
+    function artPath(id) { return /databases/$(database)/documents/weeklyArt/$(id); }
+    function slotPath(uid) { return /databases/$(database)/documents/artSlots/$(uid); }
+    function newWeek() { return resource == null || resource.data.week < weekStart(); }
+    function roundEntry() {
+      return request.resource.data.keys().hasOnly(['week', 'art'])
+        && request.resource.data.week == weekStart()
+        && request.resource.data.art is string
+        && request.resource.data.art.matches('[A-Za-z0-9]{20}');
+    }
+
+    match /drawings/{id} {
+      allow read: if activeMember();
+      allow delete: if isAdmin();
+    }
+    match /artSlots/{uid} {
+      allow get: if activeMember() && request.auth.uid == uid;
+      allow create, update: if activeMember() && request.auth.uid == uid
+        && !sunday() && !myMember().uploadsDisabled && roundEntry() && newWeek()
+        && !exists(artPath(request.resource.data.art))
+        && getAfter(artPath(request.resource.data.art)).data.uid == uid;
+    }
+    match /weeklyArt/{id} {
+      allow read: if activeMember();
+      allow create: if activeMember() && !sunday() && !myMember().uploadsDisabled
+        && request.resource.data.keys().hasOnly(['uid', 'nickname', 'strokes', 'week'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.week == weekStart()
+        && request.resource.data.nickname == get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.nickname
+        && request.resource.data.strokes is string
+        && request.resource.data.strokes.size() <= 800000
+        && getAfter(slotPath(request.auth.uid)).data.art == id
+        && getAfter(slotPath(request.auth.uid)).data.week == weekStart()
+        && (!exists(slotPath(request.auth.uid)) || get(slotPath(request.auth.uid)).data.week < weekStart());
+      allow delete: if isAdmin();
+    }
+    match /artVotes/{uid} {
+      allow read: if activeMember();
+      allow create, update: if activeMember() && request.auth.uid == uid
+        && sunday() && roundEntry() && newWeek()
+        && get(artPath(request.resource.data.art)).data.week == weekStart()
+        && get(artPath(request.resource.data.art)).data.uid != uid;
+    }
+  }
+}

@@ -1,0 +1,20 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function activeMember() {
+      return request.auth != null
+        && firestore.get(/databases/(default)/documents/members/$(request.auth.uid)).data.status == 'active';
+    }
+    function mayUpload() {
+      return activeMember()
+        && firestore.get(/databases/(default)/documents/members/$(request.auth.uid)).data.uploadsDisabled == false;
+    }
+    match /photos/{uid}/{fileName} {
+      allow read: if activeMember();
+      allow write: if mayUpload()
+        && request.auth.uid == uid
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+  }
+}
