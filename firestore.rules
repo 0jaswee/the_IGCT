@@ -24,11 +24,7 @@ service cloud.firestore {
     match /system/club {
       allow get: if isAdmin() || activeMember();
       allow list: if false;
-      allow create: if signedIn()
-        && request.resource.data.adminUid == request.auth.uid
-        && existsAfter(memberPath(request.auth.uid))
-        && getAfter(memberPath(request.auth.uid)).data.role == 'admin'
-        && request.resource.data.keys().hasOnly(['groupName', 'adminUid', 'inviteHash', 'createdAt']);
+      allow create: if false;
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inviteHash', 'groupName']);
       allow delete: if false;
@@ -37,10 +33,7 @@ service cloud.firestore {
     match /system/groupInfo {
       allow get: if signedIn();
       allow list: if false;
-      allow create: if signedIn()
-        && existsAfter(memberPath(request.auth.uid))
-        && getAfter(memberPath(request.auth.uid)).data.role == 'admin'
-        && request.resource.data.keys().hasOnly(['groupName', 'createdAt']);
+      allow create: if false;
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['groupName']);
       allow delete: if false;
@@ -49,24 +42,7 @@ service cloud.firestore {
     match /members/{uid} {
       allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow list: if isAdmin();
-      allow create: if signedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['uid', 'role', 'status', 'chatMuted', 'uploadsDisabled', 'createdAt', 'inviteProof'])
-        && request.resource.data.uid == uid
-        && request.resource.data.status == 'active'
-        && request.resource.data.chatMuted == false
-        && request.resource.data.uploadsDisabled == false
-        && (
-          (request.resource.data.role == 'admin'
-            && !exists(settingsPath())
-            && existsAfter(settingsPath())
-            && getAfter(settingsPath()).data.adminUid == uid)
-          ||
-          (request.resource.data.role == 'member'
-            && exists(settingsPath())
-            && request.resource.data.inviteProof == get(settingsPath()).data.inviteHash
-            && exists(/databases/$(database)/documents/invites/$(request.resource.data.inviteProof))
-            && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteProof)).data.active == true)
-        );
+      allow create: if false;
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'status', 'chatMuted', 'uploadsDisabled'])
         && request.resource.data.role in ['admin', 'member']
@@ -78,9 +54,7 @@ service cloud.firestore {
 
     match /profiles/{uid} {
       allow get, list: if activeMember();
-      allow create: if signedIn() && request.auth.uid == uid
-        && validProfile(request.resource.data)
-        && existsAfter(memberPath(uid));
+      allow create: if false;
       allow update: if activeMember() && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'avatar', 'avatarPhoto'])
         && validProfile(request.resource.data);
@@ -92,7 +66,7 @@ service cloud.firestore {
       allow list: if false;
       allow create: if signedIn() && request.resource.data.active == true
         && request.resource.data.createdBy == request.auth.uid
-        && (isAdmin() || getAfter(settingsPath()).data.adminUid == request.auth.uid);
+        && isAdmin();
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active']);
       allow delete: if isAdmin();
@@ -205,6 +179,9 @@ service cloud.firestore {
     match /artResults/{week} {
       allow get: if activeMember();
     }
+    match /clubJoinAttempts/{source} {
+      allow read, write: if false;
+    }
     match /pinResets/{username} {
       allow read, write: if false;
     }
@@ -229,5 +206,6 @@ service cloud.firestore {
     }
   }
 }
+
 
 

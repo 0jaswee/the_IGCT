@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#6656e8"><title>Member login — IGCT</title><link rel="stylesheet" href="styles.css"><script type="module" src="app.js"></script>  <link rel="manifest" href="manifest.webmanifest">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#6656e8"><title>Member login — IGCT</title><link rel="stylesheet" href="styles.css?v=6"><script type="module" src="app.js?v=6"></script>  <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <script src="pwa.js" defer></script>
+  <script src="pwa.js?v=6" defer></script>
 </head>
 <body class="form-page"><main class="form-layout page-wrap login-layout"><a class="button button-purple" style="align-self:flex-start;min-height:48px" href="index.html">← <span>Come back to the club</span></a><section class="form-card login-card"><h1>Log in to IGCT</h1><form id="login-form" novalidate><label for="username">Your username</label><div class="input-prefix"><span>@</span><input id="username" name="username" maxlength="16" autocomplete="username" placeholder="Your username" required></div><label for="pin">Your 4-digit PIN</label><input id="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="current-password" placeholder="••••" required><p class="form-error" id="login-error" role="alert"></p><button class="button button-purple full-button" type="submit">Let’s go! <b>→</b></button></form><button type="button" class="pin-reset-link" id="forgot-pin" aria-expanded="false" aria-controls="pin-recovery">🔑 Forgot your PIN?</button>
 <section id="pin-recovery" hidden>
@@ -22,7 +22,9 @@
     <button class="button button-purple full-button">Save new PIN</button>
   </form>
   <p id="pin-recovery-status" role="status"></p>
-</section><p class="form-switch">New to the team? <a href="join.html">Join the group</a></p></section></main></body></html>
+</section><p class="form-switch">New to the team? <a href="join.html">Join the group</a></p></section><small class="igct-build">IGCT · Build 6</small></main></body></html>
+
+
 
 
 

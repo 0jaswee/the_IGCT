@@ -19,3 +19,5 @@
 #pin-recovery-status{font-weight:800;color:#49356f}
 .pin-code-dialog{max-width:min(90vw,440px);border:0;border-radius:16px;padding:22px}
 .pin-code-dialog code{display:block;overflow-wrap:anywhere;font-size:1.15rem;padding:12px;background:#f3ebff;margin:10px 0}
+
+.igct-build{display:block;text-align:center;margin:12px 0 4px;color:#5f4f83;font-size:.75rem}

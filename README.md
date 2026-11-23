@@ -86,3 +86,19 @@ Deploy the recovery functions from the project root with the Firebase CLI:
   firebase deploy --project igct-game-changers-club --only functions:allowPinReset,functions:checkPinReset,functions:finishPinReset
 
 Firebase requires Blaze billing to deploy Cloud Functions. Use a runtime service account with Firebase Authentication Admin and Cloud Datastore User permissions for this project. The functions run on Firebase and the web files can stay on GitHub Pages. Publish the included Firestore rules as part of the update. No service account key is needed in the website or in this ZIP for PIN recovery.
+
+Build 5 appears at the bottom of the home and login pages. Upload the contents of the ZIP directly to the GitHub Pages publishing folder so index.html and sw.js are at its root. Build 5 confirms the new frontend loaded. PIN resets still require the Firebase functions.
+
+## Password required to join or create the club
+
+Build 6 asks every new signup for the club join password. Existing members continue to use Come back with their username and PIN. On a fresh database, the first approved signup without an invite becomes admin. If the team already exists, new members also need its invite code. Server rules block direct client creation of clubs and members.
+
+Before publishing Build 6, set the Firebase secret interactively. Enter the join password you provided in the chat when the CLI prompts. Do not add it to GitHub or the website source.
+
+  firebase functions:secrets:set IGCT_JOIN_PASSWORD --project igct-game-changers-club
+
+Then deploy the functions and rules from the ZIP directory:
+
+  firebase deploy --project igct-game-changers-club --only functions,firestore:rules
+
+Deploying Cloud Functions requires Blaze. Publish these rules alongside the new website. They close the old direct signup path. The weekly winner job is configured separately above.

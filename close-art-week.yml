@@ -1,0 +1,28 @@
+name: Close IGCT art week
+
+on:
+  schedule:
+    # Monday 00:07 and 02:07 India time.
+    - cron: '37 18,20 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: igct-close-art-week
+  cancel-in-progress: false
+
+jobs:
+  close-art-week:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix scripts --no-save --no-package-lock --ignore-scripts firebase-admin@13.4.0
+      - run: node scripts/close-art-week.mjs
+        env:
+          IGCT_FIREBASE_CREDENTIALS: ${{ secrets.IGCT_FIREBASE_CREDENTIALS }}

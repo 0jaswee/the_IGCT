@@ -1,4 +1,4 @@
-const CACHE = 'igct-shell-v4';
+const CACHE = 'igct-shell-v6';
 const SHELL = [
   './', './index.html', './join.html', './login.html', './club.html', './doodle.html',
   './styles.css', './club-games.css', './app.js', './drawing.js', './firebase-config.js',
@@ -6,7 +6,7 @@ const SHELL = [
 ].map(path => new URL(path, self.registration.scope).href);
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL.map(url => new Request(url, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', event => {
@@ -18,19 +18,22 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
+  const requestedVersion = url.searchParams.get('v');
   url.search = '';
   if (!SHELL.includes(url.href)) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     try {
-      const response = await fetch(event.request);
-      if (response.ok && !event.request.url.includes('?')) await cache.put(url.href, response.clone());
+      const response = await fetch(event.request, { cache: 'no-cache' });
+      if (response.ok && (!event.request.url.includes('?') || requestedVersion === '6')) await cache.put(url.href, response.clone());
       return response;
     } catch {
-      return (await cache.match(url.href)) || Response.error();
+      return ((!requestedVersion || requestedVersion === '6') && await cache.match(url.href)) || Response.error();
     }
   })());
 });
+
+
 
 
 

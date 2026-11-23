@@ -8,7 +8,7 @@ import {
   deleteDoc, query, orderBy, limit, onSnapshot, runTransaction, serverTimestamp,
   increment, writeBatch
 } from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js';
-import { setupDrawingTools } from './drawing.js';
+import { setupDrawingTools } from './drawing.js?v=6';
 import { firebaseConfig } from './firebase-config.js';
 
 const firebaseApp = initializeApp(firebaseConfig);
@@ -70,7 +70,6 @@ function authFriendlyError(error) {
 function memberRef(uid) { return doc(db, 'members', uid); }
 function profileRef(uid) { return doc(db, 'profiles', uid); }
 function settingsRef() { return doc(db, 'system', 'club'); }
-function groupInfoRef() { return doc(db, 'system', 'groupInfo'); }
 
 // Preserve the QR invite from the landing page when a kid taps Join.
 const joinLink = byId('join-link');
@@ -119,6 +118,8 @@ byId('join-form')?.addEventListener('submit', async event => {
   const pin = byId('pin').value;
   const pinAgain = byId('pin-again').value;
   const invite = (byId('invite-code')?.value || '').trim();
+  const joinPassword = byId('join-password').value.trim();
+  if (!joinPassword) return writeFormError('join-error', 'Enter the join password first.');
   if (nickname.length < 2) return writeFormError('join-error', 'Choose a nickname with at least two characters.');
   if (!validUsername(username)) return writeFormError('join-error', 'Use 3–16 letters, numbers, or underscores in your username.');
   if (!/^\d{4}$/.test(pin)) return writeFormError('join-error', 'Your PIN needs to be exactly four numbers.');
@@ -127,46 +128,41 @@ byId('join-form')?.addEventListener('submit', async event => {
   const button = event.submitter;
   button.disabled = true;
   button.textContent = 'Setting up your team buddy…';
-  let credential = null;
+  let credential;
+  let created = false;
   try {
-    const password = await pinPassword(username, pin);
-    credential = await createUserWithEmailAndPassword(auth, pseudoEmail(username), password);
-    const uid = credential.user.uid;
-    const profile = { uid, username, nickname, avatar: '🦊', createdAt: serverTimestamp() };
-    const member = { uid, role: 'member', status: 'active', chatMuted: false, uploadsDisabled: false, createdAt: serverTimestamp() };
-    const generated = randomInvite();
-    const generatedHash = await digestText(generated);
-    const suppliedHash = invite ? await digestText(invite) : '';
-    let becameAdmin = false;
-    await runTransaction(db, async transaction => {
-      if (!invite) {
-        const group = await transaction.get(groupInfoRef());
-        if (group.exists()) throw new Error('NEED_INVITE');
-        becameAdmin = true;
-        const inviteDoc = doc(db, 'invites', generatedHash);
-        transaction.set(groupInfoRef(), { groupName: 'THE INVENCIABLE GAME CHANGERS TEAM (IGCT)', createdAt: serverTimestamp() });
-        transaction.set(settingsRef(), { groupName: 'THE INVENCIABLE GAME CHANGERS TEAM (IGCT)', adminUid: uid, inviteHash: generatedHash, createdAt: serverTimestamp() });
-        transaction.set(memberRef(uid), { ...member, role: 'admin' });
-        transaction.set(profileRef(uid), profile);
-        transaction.set(inviteDoc, { active: true, createdBy: uid, createdAt: serverTimestamp() });
-      } else {
-        const inviteDoc = doc(db, 'invites', suppliedHash);
-        const inviteSnap = await transaction.get(inviteDoc);
-        if (!inviteSnap.exists() || !inviteSnap.data().active) throw new Error('BAD_INVITE');
-        transaction.set(memberRef(uid), { ...member, role: 'member', inviteProof: suppliedHash });
-        transaction.set(profileRef(uid), profile);
+    const accountPassword = await pinPassword(username, pin);
+    try {
+      credential = await createUserWithEmailAndPassword(auth, pseudoEmail(username), accountPassword);
+      created = true;
+    } catch (error) {
+      if (error.code !== 'auth/email-already-in-use') throw error;
+      try {
+        credential = await signInWithEmailAndPassword(auth, pseudoEmail(username), accountPassword);
+      } catch (signInError) {
+        if (signInError.code === 'auth/invalid-credential') throw error;
+        throw signInError;
       }
-    });
-    if (becameAdmin) sessionStorage.setItem('igct_invite_' + uid, generated);
+    }
+    const result = await callClubFunction('registerClubMember', { username, nickname, password: joinPassword, invite });
+    if (result.invite) {
+      try { sessionStorage.setItem('igct_invite_' + credential.user.uid, result.invite); }
+      catch { /* The admin can generate a new invite if local storage is blocked. */ }
+    }
     location.assign('club.html');
   } catch (error) {
-    // Remove a just-created login if the invite code or the protected join transaction failed.
-    if (credential?.user) {
-      try { await deleteUser(credential.user); } catch { /* Keep the error kid-friendly; admin can remove a stray account. */ }
+    const rejected = ['functions/invalid-argument', 'functions/permission-denied',
+      'functions/failed-precondition', 'functions/resource-exhausted'].includes(error.code);
+    if (created && credential && rejected) {
+      try { await deleteUser(credential.user); } catch { /* A later retry can recover the login. */ }
     }
-    if (error.message === 'NEED_INVITE') writeFormError('join-error', 'Scan the team’s invitation QR code, or ask the admin for the invite code.');
-    else if (error.message === 'BAD_INVITE') writeFormError('join-error', 'That team invite has expired. Ask the admin for a fresh QR code.');
-    else writeFormError('join-error', authFriendlyError(error));
+    if (credential && auth.currentUser?.uid === credential.user.uid) {
+      try { await signOut(auth); } catch { /* The member rules still protect the club. */ }
+    }
+    const message = rejected ? error.message
+      : String(error.code).startsWith('functions/') ? 'Registration is unavailable. Ask your club admin to check the Firebase setup.'
+      : authFriendlyError(error);
+    writeFormError('join-error', message);
   } finally {
     button.disabled = false;
     button.innerHTML = 'Create my account <b>→</b>';
@@ -822,7 +818,7 @@ function setupStudioShare(canvas) {
 
 
 
-async function callPinReset(name, data) {
+async function callClubFunction(name, data) {
   const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/13.4.0/firebase-functions.js');
   return (await httpsCallable(getFunctions(firebaseApp, 'asia-south1'), name)(data)).data;
 }
@@ -830,7 +826,7 @@ async function callPinReset(name, data) {
 async function issueResetCode(button) {
   button.disabled = true;
   try {
-    const result = await callPinReset('allowPinReset', { uid: button.dataset.uid });
+    const result = await callClubFunction('allowPinReset', { uid: button.dataset.uid });
     if (!button.isConnected) return;
     const person = membersCache.find(item => item.uid === button.dataset.uid);
     const dialog = document.createElement('dialog');
@@ -886,7 +882,7 @@ if (forgotPin) {
     userField.disabled = codeField.disabled = button.disabled = true;
     status.textContent = 'Checking your code…';
     try {
-      await callPinReset('checkPinReset', { username, code });
+      await callClubFunction('checkPinReset', { username, code });
       verified = { username, code };
       finish.hidden = false;
       status.textContent = 'Your admin approved this reset. Choose a new PIN.';
@@ -912,7 +908,7 @@ if (forgotPin) {
     status.textContent = 'Saving your new PIN…';
     try {
       const password = await pinPassword(approval.username, pin);
-      await callPinReset('finishPinReset', { ...approval, password });
+      await callClubFunction('finishPinReset', { ...approval, password });
       clearApproval();
       check.reset();
       byId('username').value = approval.username;
@@ -926,3 +922,5 @@ if (forgotPin) {
     } finally { button.disabled = checkButton.disabled = userField.disabled = codeField.disabled = false; }
   });
 }
+
+
