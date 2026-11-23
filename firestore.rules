@@ -81,11 +81,9 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == uid
         && validProfile(request.resource.data)
         && existsAfter(memberPath(uid));
-      allow update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'avatar'])
-        && request.resource.data.nickname is string
-        && request.resource.data.nickname.size() >= 2
-        && request.resource.data.nickname.size() <= 20;
+      allow update: if activeMember() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'avatar', 'avatarPhoto'])
+        && validProfile(request.resource.data);
       allow delete: if isAdmin() && uid != request.auth.uid;
     }
 
@@ -175,4 +173,5 @@ service cloud.firestore {
     }
   }
 }
+
 

@@ -4,7 +4,7 @@ import {
   deleteUser, signOut, onAuthStateChanged
 } from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js';
 import {
-  getFirestore, where, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc,
+  getFirestore, where, deleteField, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc,
   deleteDoc, query, orderBy, limit, onSnapshot, runTransaction, serverTimestamp,
   increment, writeBatch
 } from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js';
@@ -22,7 +22,6 @@ let chatStop = null;
 let activeTab = "home";
 let chatMuted = false;
 let uploadsDisabled = false;
-let selectedAvatar = '🦊';
 let triviaDone = false;
 let gameTabLoaded = false;
 
@@ -80,12 +79,6 @@ if (joinLink && new URLSearchParams(location.search).has('invite')) {
 const inviteInput = byId('invite-code');
 if (inviteInput) inviteInput.value = new URLSearchParams(location.search).get('invite') || '';
 
-const avatarFile = byId('avatar-file');
-const avatarPreview = byId('avatar-preview');
-let avatarPhoto = '';
-let avatarProcessing = false;
-let avatarVersion = 0;
-
 function avatarMarkup(profile) {
   const photo = profile.avatarPhoto;
   if (typeof photo === 'string' && photo.length <= 20000 &&
@@ -116,60 +109,10 @@ async function makeAvatar(file) {
   }
 }
 
-function clearAvatarPhoto() {
-  avatarVersion++;
-  avatarProcessing = false;
-  avatarPhoto = '';
-  if (!avatarPreview) return;
-  avatarPreview.hidden = true;
-  avatarPreview.removeAttribute('src');
-  byId('avatar-status').textContent = '';
-}
-
-qsa('[data-avatar]').forEach(button => button.addEventListener('click', () => {
-  clearAvatarPhoto();
-  if (avatarFile) avatarFile.value = '';
-  selectedAvatar = button.dataset.avatar;
-  qsa('[data-avatar]').forEach(item => {
-    const chosen = item === button;
-    item.classList.toggle('selected', chosen);
-    item.setAttribute('aria-pressed', String(chosen));
-  });
-}));
-
-avatarFile?.addEventListener('change', async () => {
-  clearAvatarPhoto();
-  const file = avatarFile.files[0];
-  if (!file) return;
-  const version = avatarVersion;
-  avatarProcessing = true;
-  byId('avatar-status').textContent = 'Preparing icon…';
-  try {
-    const icon = await makeAvatar(file);
-    if (version !== avatarVersion) return;
-    avatarPhoto = icon;
-    avatarPreview.src = icon;
-    avatarPreview.hidden = false;
-    byId('avatar-status').textContent = 'Photo icon selected';
-    qsa('[data-avatar]').forEach(button => {
-      button.classList.remove('selected');
-      button.setAttribute('aria-pressed', 'false');
-    });
-  } catch (error) {
-    if (version !== avatarVersion) return;
-    if (avatarFile) avatarFile.value = '';
-    byId('avatar-status').textContent = error instanceof DOMException ? 'Could not open that image. Choose another.' : error.message;
-  } finally {
-    if (version === avatarVersion) avatarProcessing = false;
-  }
-});
-
 // First account initializes the team as admin. The QR is created only after that account exists.
 byId('join-form')?.addEventListener('submit', async event => {
   event.preventDefault();
   writeFormError('join-error', '');
-  if (avatarProcessing) return writeFormError('join-error', 'Wait for your icon preview.');
-  const profileIcon = { avatar: selectedAvatar, ...(avatarPhoto ? { avatarPhoto } : {}) };
   const nickname = byId('nickname').value.trim();
   const username = cleanUsername(byId('username').value);
   const pin = byId('pin').value;
@@ -188,7 +131,7 @@ byId('join-form')?.addEventListener('submit', async event => {
     const password = await pinPassword(username, pin);
     credential = await createUserWithEmailAndPassword(auth, pseudoEmail(username), password);
     const uid = credential.user.uid;
-    const profile = { uid, username, nickname, ...profileIcon, createdAt: serverTimestamp() };
+    const profile = { uid, username, nickname, avatar: '🦊', createdAt: serverTimestamp() };
     const member = { uid, role: 'member', status: 'active', chatMuted: false, uploadsDisabled: false, createdAt: serverTimestamp() };
     const generated = randomInvite();
     const generatedHash = await digestText(generated);
@@ -386,9 +329,9 @@ function artRound(now = Date.now()) {
 
 async function renderArt() {
   const round = artRound();
-  byId('tab-content').innerHTML = '<div class="art-intro"><span aria-hidden="true">🎨</span><div><h3>Weekly art</h3><p></p></div></div><div id="drawing-wall" class="drawing-wall" aria-live="polite"></div>';
+  byId('tab-content').innerHTML = '<div class="art-intro"><span aria-hidden="true">🎨</span><div><h3>Art &amp; votes</h3><p></p></div></div><div id="drawing-wall" class="drawing-wall" aria-live="polite"></div>';
   const wall = byId('drawing-wall');
-  byId('tab-content').querySelector('.art-intro p').textContent = round.sunday ? 'Pick your favorite! One vote today.' : 'One doodle each. Vote on Sunday!';
+  byId('tab-content').querySelector('.art-intro p').textContent = round.sunday ? '⭐ Voting is open! Pick one favorite.' : '🗓️ Voting opens Sunday (India time).';
   if (!round.sunday && !uploadsDisabled) {
     const draw = document.createElement('button');
     draw.className = 'button button-purple';
@@ -421,7 +364,7 @@ async function renderArt() {
       if (round.sunday) {
         const vote = document.createElement('button');
         vote.className = 'reaction-button';
-        vote.textContent = myVote?.data().art === art.id ? '✅ Voted' : '⭐ Vote';
+        vote.textContent = myVote?.data().art === art.id ? '✅ My vote' : data.uid === me.uid ? 'My drawing' : '⭐ Vote';
         vote.setAttribute('aria-label', 'Vote for ' + data.nickname);
         vote.disabled = Boolean(myVote) || data.uid === me.uid;
         vote.onclick = async () => {
@@ -429,6 +372,7 @@ async function renderArt() {
           try {
             await setDoc(doc(db, 'artVotes', me.uid), { week: round.week, art: art.id });
             if (wall.isConnected) renderArt();
+            showMessage('Vote saved! ⭐', 'success');
           } catch (error) {
             vote.disabled = false;
             showMessage(authFriendlyError(error), 'error');
@@ -447,7 +391,7 @@ async function renderArt() {
 }
 
 async function renderTeam() {
-  byId('tab-content').innerHTML=`<div class="team-head-card"><span>🧸</span><div><h3>Team buddies</h3><p>Say hello to your fellow game changers.</p></div></div><div id="team-list" class="team-list"><p class="tiny-note">Loading your team…</p></div>${me.role==='admin'?'<section class="admin-panel"><div class="admin-panel-heading"><span>👑</span><div><h3>Team leader tools</h3><p>Manage helpers and keep the club friendly.</p></div></div><div class="invite-controls"><button class="button button-purple" id="new-invite">Make a new team code</button><button class="reaction-button" id="copy-invite" disabled>Copy join link</button></div><div id="invite-output" class="invite-output"></div><div class="photo-lock">Photo uploads stay paused: Firebase requires switching this project to its pay-as-you-go plan before Cloud Storage can be enabled. Chat and games still use the free database allowance.</div></section>':''}`;
+  byId('tab-content').innerHTML=`<div class="team-head-card"><span>🧸</span><div><h3>Team buddies</h3><p>Say hello to your fellow game changers.</p></div></div><div id="team-list" class="team-list"><p class="tiny-note">Loading your team…</p></div>${me.role==='admin'?'<section class="admin-panel"><div class="admin-panel-heading"><span>👑</span><div><h3>Team leader tools</h3><p>Manage helpers and keep the club friendly.</p></div></div><div class="invite-controls"><button class="button button-purple" id="new-invite">Make a new team code</button><button class="reaction-button" id="copy-invite" disabled>Copy join link</button></div><div id="invite-output" class="invite-output"></div><div class="photo-lock">Members can share drawings they make in the club.</div></section>':''}`;
   try {
     const people=await getDocs(collection(db,'profiles'));
     const memberDocs=me.role==='admin'?await getDocs(collection(db,'members')):null;
@@ -526,8 +470,93 @@ function showInvite(raw) {
 }
 
 function renderMe() {
-  byId('tab-content').innerHTML=`<article class="profile-summary"><span class="profile-avatar">${avatarMarkup(me)}</span><div><div class="eyebrow">${me.role==='admin'?'TEAM ADMIN':'TEAM MEMBER'}</div><h3>${escapeHtml(me.nickname)}</h3><p>@${escapeHtml(me.username)}</p></div></article><div class="privacy-card">🛡️ Your profile uses a nickname and avatar. Never post your full name, school, home address, phone number, password, or private photos.</div><button class="button button-purple full-button" id="profile-signout">Sign out of IGCT</button>`;
-  byId('profile-signout').addEventListener('click',async()=>{await signOut(auth);location.assign('index.html');});
+  byId('tab-content').innerHTML = `
+    <article class="profile-summary">
+      <span id="my-avatar-preview" class="profile-avatar">${avatarMarkup(me)}</span>
+      <div><div class="eyebrow">${me.role === 'admin' ? 'TEAM ADMIN' : 'TEAM MEMBER'}</div>
+      <h3>${escapeHtml(me.nickname)}</h3><p>@${escapeHtml(me.username)}</p></div>
+    </article>
+    <form id="profile-photo-form" class="profile-photo-card">
+      <h3>📸 Change my picture</h3>
+      <label for="profile-photo">Pick a picture from your device</label>
+      <input id="profile-photo" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="profile-photo-hint">
+      <small id="profile-photo-hint">Your team can see it. Ask a grown-up before sharing a photo.</small>
+      <div class="profile-photo-actions">
+        <button class="button button-purple" type="submit" disabled>Save picture</button>
+        <button class="reaction-button" id="profile-photo-remove" type="button" ${me.avatarPhoto ? '' : 'hidden'}>Use my default icon</button>
+      </div>
+      <p id="profile-photo-status" role="status"></p>
+    </form>
+    <button class="reaction-button" id="profile-signout">Sign out</button>`;
+
+  const form = byId('profile-photo-form');
+  const input = byId('profile-photo');
+  const preview = byId('my-avatar-preview');
+  const status = byId('profile-photo-status');
+  const save = form.querySelector('[type="submit"]');
+  const remove = byId('profile-photo-remove');
+  let pendingPhoto = '';
+  let selection = 0;
+
+  input.addEventListener('change', async () => {
+    const version = ++selection;
+    pendingPhoto = '';
+    save.disabled = true;
+    remove.disabled = true;
+    preview.innerHTML = avatarMarkup(me);
+    status.textContent = '';
+    try {
+      const file = input.files[0];
+      if (!file) return;
+      status.textContent = 'Preparing your picture…';
+      const photo = await makeAvatar(file);
+      if (version !== selection || !form.isConnected) return;
+      pendingPhoto = photo;
+      preview.innerHTML = avatarMarkup({ ...me, avatarPhoto: photo });
+      status.textContent = 'Looks good? Tap Save picture.';
+      save.disabled = false;
+    } catch (error) {
+      if (version === selection) status.textContent = error instanceof DOMException ? 'Could not open that image.' : error.message;
+    } finally {
+      if (version === selection) remove.disabled = false;
+    }
+  });
+
+  async function savePicture(photo) {
+    const profile = me;
+    input.disabled = save.disabled = remove.disabled = true;
+    status.textContent = 'Saving…';
+    try {
+      await updateDoc(profileRef(profile.uid), { avatarPhoto: photo || deleteField() });
+      if (photo) profile.avatarPhoto = photo;
+      else delete profile.avatarPhoto;
+      if (me === profile) byId('club-avatar').innerHTML = avatarMarkup(me);
+      if (form.isConnected) {
+        pendingPhoto = '';
+        input.value = '';
+        preview.innerHTML = avatarMarkup(profile);
+        remove.hidden = !photo;
+        status.textContent = 'Picture saved! ✨';
+      }
+    } catch (error) {
+      status.textContent = error.code === 'permission-denied'
+        ? 'Picture saving is blocked. Ask an admin to check Firebase.'
+        : authFriendlyError(error);
+    } finally {
+      input.disabled = remove.disabled = false;
+      save.disabled = !pendingPhoto;
+    }
+  }
+
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    if (pendingPhoto && !input.disabled) savePicture(pendingPhoto);
+  });
+  remove.addEventListener('click', () => savePicture(''));
+  byId('profile-signout').addEventListener('click', async () => {
+    await signOut(auth);
+    location.assign('index.html');
+  });
 }
 
 function selectTab(name) {
@@ -575,6 +604,7 @@ if(clubPage){
     }catch(error){showMessage(authFriendlyError(error),'error');}
   });
 }
+
 
 
 

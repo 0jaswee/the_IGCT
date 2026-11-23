@@ -51,3 +51,7 @@ Photo uploads are deliberately off. Firebase now requires the pay-as-you-go Blaz
 ## Weekly art
 
 Publish the updated firestore.rules before using this revision. Members share one canvas doodle Monday through Saturday, then vote once on Sunday (India time). They cannot vote for their own entry. Art and vote counts shown in the app reset to the new round each Monday. Earlier doodles stay in Firestore.
+
+## Profile pictures
+
+Members can upload or remove a small profile picture under Me. Publish the included Firestore rules to enable these updates. Gallery images are not accepted as art posts. The Art & Vote tab opens voting on Sundays, India time.

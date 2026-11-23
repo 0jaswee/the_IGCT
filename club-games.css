@@ -15,3 +15,13 @@
 .art-intro span{animation:dock-pop .35s ease-out}
 @keyframes dock-pop{50%{transform:translateY(-4px) scale(1.13)}}
 @media(prefers-reduced-motion:reduce){.club-page .nav-item.active span,.art-intro span{animation:none}}
+
+.profile-photo-card{margin:16px 0;padding:18px;border-radius:20px;background:#f8f3ff;border:2px solid #eae0ff;display:grid;gap:10px;color:#493567}
+.profile-photo-card h3,.profile-photo-card p{margin:0}
+.profile-photo-card input{width:100%;font:inherit}
+.profile-photo-card input::file-selector-button{border:0;border-radius:12px;background:#e7dbff;color:#3a2270;padding:12px;margin-right:8px;font:inherit;cursor:pointer}
+.profile-photo-card button{min-height:44px}
+.profile-photo-actions{display:flex;flex-wrap:wrap;gap:8px}
+.profile-avatar img{width:100%;height:100%;max-width:64px;max-height:64px;object-fit:cover}
+.drawing-card button{width:100%;background:#ffefaa;color:#573b00;border-radius:12px;font-weight:800}
+.drawing-card button:disabled{background:#f0edf6;color:#504560}
